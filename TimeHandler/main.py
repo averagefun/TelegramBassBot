@@ -14,12 +14,14 @@ def get_cred():
     return cred
 
 
+cred = get_cred()
+
 # DataBase
 mydb = mysql.connector.connect(
     host=cred['db_host'],
     user=cred['db_user'],
-    passwd=keys['db_passwd'],
-    database=keys['db_name']
+    passwd=cred['db_passwd'],
+    database=cred['db_name']
 )
 mycursor = mydb.cursor()
 
@@ -33,18 +35,24 @@ r = dict(zip(keys, values))
 update_bal = f'''UPDATE users
                 SET balance = CASE
                     WHEN role_ = 'senior' THEN CASE
+                        WHEN balance >= {r['senior'][1]} THEN 
+                            balance
                         WHEN balance < ({r['senior'][1]} - {r['senior'][0]}) THEN
                             balance + {r['senior'][0]}
                         ELSE {r['senior'][1]}
                         end
                     WHEN role_ = 'middle' THEN CASE
+                        WHEN balance >= {r['middle'][1]} THEN 
+                            balance
                         WHEN balance < ({r['middle'][1]} - {r['middle'][0]}) THEN
-                            balance + d_balance
+                            balance + {r['middle'][0]}
                         ELSE {r['middle'][1]}
                         end
                     WHEN role_ = 'junior' THEN CASE
+                        WHEN balance >= {r['junior'][1]} THEN 
+                            balance
                         WHEN balance < ({r['junior'][1]} - {r['junior'][0]}) THEN
-                            balance + d_balance
+                            balance + {r['junior'][0]}
                         ELSE {r['junior'][1]}
                         end
                     ELSE
@@ -55,7 +63,7 @@ update_bal = f'''UPDATE users
 update_role = f'''UPDATE users
               SET role_ = 'junior',
               role_end = NULL 
-              WHERE NOW() > role_end'''
+              WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
 
 
 # event from CloudWatch

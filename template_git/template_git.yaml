@@ -76,12 +76,16 @@ Resources:
     Properties:
       FunctionName: TimeHandlerTBot
       Description: "Update users balance every day at midnight"
-      CodeUri: MsgHandler/
+      CodeUri: TimeHandler/
       Handler: main.lambda_handler
       Timeout: 6
       Runtime: python3.7
       Layers:
         - mysql_layer
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName:
+              Ref: CredTableTBot
       Events:
         TimeEvent:
           Type: Schedule

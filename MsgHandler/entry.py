@@ -587,15 +587,20 @@ class InlineButton:
             balance = mycursor.fetchone()[0]
             now = datetime.datetime.now()
             if self.data == 'buy_middle':
+                mycursor.execute("SELECT role_ FROM users WHERE id = %s", (self.user_id, ))
+                role = mycursor.fetchone()[0]
+                if role == 'middle':
+                    self.answer_query('Вы уже купили данный товар!', show_alert=True)
+                    return None
                 mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'price_mid'")
                 price = mycursor.fetchone()[0]
                 if balance >= price:
-                    mycursor.execute("UPDATE users SET balance = balance - %s, role_ = 'middle', role_end = NOW() + INTERVAL 30 DAY WHERE id = %s",
+                    mycursor.execute("UPDATE users SET balance = balance - %s, role_ = 'middle', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
                                      (price, self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
-                    delta = datetime.timedelta(days=30)
-                    role_end = (now.date()+delta).strftime("%Y-%m-%d %H:%M")
+                    delta = datetime.timedelta(days=30, hours=3)
+                    role_end = (now+delta).date().strftime("%Y-%m-%d 23:59")
                     send_message(self.user_id, f"Вы успешно приобрели подписку middle до {role_end} по МСК.")
 
                 else:
