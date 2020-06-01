@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS
+
+  Sample SAM Template for AWS
+
+Resources:
+  BassBoostTrigger:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "BassBoostTrigger"
+
+  CredTableTBot:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: CredTableTBot
+      ProvisionedThroughput:
+        WriteCapacityUnits: 1
+        ReadCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: name
+          AttributeType: S
+      KeySchema:
+        - KeyType: HASH
+          AttributeName: name
+
+  MsgHandler:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: MsgHandlerTBot
+      Description: "Handles message from @AudioBassBot"
+      CodeUri: MsgHandler/
+      Handler: entry.lambda_handler
+      Timeout: 7
+      Runtime: python3.7
+      Layers:
+        - mysql_layer
+        - requests_layer
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName:
+              !GetAtt BassBoostTrigger.TopicName
+        - DynamoDBReadPolicy:
+            TableName:
+              Ref: CredTableTBot
+            
+  BassBoostFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        FunctionName: BassBoostTBot
+        Description: "BassBoost audio using ffmpeg layer"
+        CodeUri: BassBoost/
+        Handler: louder.lambda_handler
+        Timeout: 40
+        MemorySize: 1024
+        Runtime: python3.7
+        Policies:
+          - DynamoDBReadPolicy:
+              TableName:
+                Ref: CredTableTBot
+        Layers:
+          - ffmpeg_layer
+          - numpy_layer
+          - mysql_layer
+          - requests_layer
+        Events:
+          BassReq:
+            Type: SNS
+            Properties:
+              Topic:
+                Ref: BassBoostTrigger
+
+  TimeHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TimeHandlerTBot
+      Description: "Update users balance every day at midnight"
+      CodeUri: MsgHandler/
+      Handler: main.lambda_handler
+      Timeout: 6
+      Runtime: python3.7
+      Layers:
+        - mysql_layer
+      Events:
+        TimeEvent:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(24 hours)"
+
+
+
+
