@@ -25,9 +25,6 @@ def get_cred():
 
 cred = get_cred()
 
-# DEBUG MODE
-debug_mode = int(cred['debug_mode'])
-
 # TelegramBot
 Token = cred['bot_token']
 URL = "https://api.telegram.org/bot{}/".format(Token)
@@ -117,6 +114,7 @@ class User:
         mydb.commit()
 
     def commands(self):
+        global cred
         # команды по ролям
         commands_list = {'junior': ['/start', '/stats', '/stop', '/pay', '/buy', '/help'],
                          'middle': [],
@@ -223,6 +221,8 @@ class User:
                 update_dynamoDB('debug_mode', str(debug))
                 send_message(self.id, f"debug_mode установлен в {debug}")
             else:
+                # update cred
+                cred = get_cred()
                 send_message(self.id, cred['debug_mode'])
 
 
@@ -673,6 +673,12 @@ def lambda_handler(event, context):
                      'Сожалеем, но вы <b>забанены</b>. Если вам кажется, что это ошибка, обратитесь в поддержку.')
         return None
 
+    # Update cred
+    cred = get_cred()
+
+    # UPDATE DEBUG MODE
+    debug_mode = int(cred['debug_mode'])
+
     # debug mode
     if debug_mode and user.role != 'senior':
         if user.status == 'start':
@@ -790,6 +796,7 @@ def put_SNS(message):
 
 
 def update_dynamoDB(name, value):
+    global cred
     DB = boto3.resource('dynamodb')
     table = DB.Table('CredTableTBot')
     response = table.update_item(
