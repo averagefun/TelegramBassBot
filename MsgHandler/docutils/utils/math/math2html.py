@@ -1666,7 +1666,7 @@ class TaggedOutput(ContentsOutput):
 
 class FilteredOutput(ContentsOutput):
   "Returns the output in the contents, but filtered:"
-  "some strings are replaced by others."
+  "some strings are replaced by other_git."
 
   def __init__(self):
     "Initialize the filters."

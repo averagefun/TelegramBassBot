@@ -83,7 +83,7 @@ def validate_encoding_error_handler(setting, value, option_parser,
         raise LookupError(
             'unknown encoding error handler: "%s" (choices: '
             '"strict", "ignore", "replace", "backslashreplace", '
-            '"xmlcharrefreplace", and possibly others; see documentation for '
+            '"xmlcharrefreplace", and possibly other_git; see documentation for '
             'the Python ``codecs`` module)' % value)
     return value
 

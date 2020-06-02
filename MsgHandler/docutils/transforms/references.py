@@ -658,7 +658,7 @@ class Substitutions(Transform):
 
     default_priority = 220
     """The Substitutions transform has to be applied very early, before
-    `docutils.tranforms.frontmatter.DocTitle` and others."""
+    `docutils.tranforms.frontmatter.DocTitle` and other_git."""
 
     def apply(self):
         defs = self.document.substitution_defs

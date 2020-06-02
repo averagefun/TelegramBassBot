@@ -200,7 +200,7 @@ ASCII character set in general -- is certainly a simpler way to live.
 Even if you *do* care about accurate typography, you still might want to
 think twice before educating the quote characters in your weblog. One side
 effect of publishing curly quote characters is that it makes your
-weblog a bit harder for others to quote from using copy-and-paste. What
+weblog a bit harder for other_git to quote from using copy-and-paste. What
 happens is that when someone copies text from your blog, the copied text
 contains the 8-bit curly quote characters (as well as the 8-bit characters
 for em-dashes and ellipses, if you use these options). These characters

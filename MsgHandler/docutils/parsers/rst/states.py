@@ -54,7 +54,7 @@ Parsing proceeds as follows:
 1. The state machine examines each line of input, checking each of the
    transition patterns of the state `Body`, in order, looking for a match.
    The implicit transitions (blank lines and indentation) are checked before
-   any others.  The 'text' transition is a catch-all (matches anything).
+   any other_git.  The 'text' transition is a catch-all (matches anything).
 
 2. The method associated with the matched transition pattern is called.
 

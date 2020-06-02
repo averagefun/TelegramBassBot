@@ -12,7 +12,7 @@ import mysql.connector
 #import use_proxy
 
 # MODE
-debug_mode = False
+debug_mode = True
 
 # Get cred
 def get_cred():
@@ -120,16 +120,21 @@ class User:
                          'senior': ['/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
-        text = self.text.split()
+        row_text = self.text.split('\n')
+        text = row_text[0].split()
         command = text[0]
         if len(text) == 1:
             arg, arg2 = None, None
         elif len(text) == 2:
             arg = text[1]
-            arg2 = None
+            if len(row_text) == 1:
+                arg2 = None
+            else:
+                arg2 = '\n'.join(row_text[1:])
+
         else:
-            arg = text[1]
-            arg2 = ' '.join(text[2:])
+            send_message(self.id, 'Введите второй аргумент с новой строки!')
+            return None
 
         # junior
         if command not in commands_list['junior'] and self.role == 'junior':
@@ -244,12 +249,14 @@ class User:
             texts = [text[0] for text in mycursor.fetchall()]
             if arg and (arg in texts):
                 if arg2:
+                    send_message(self.id, f'Теперь {arg} будет выглядеть так:')
+                    r = send_message(self.id, arg2)
+                    if not r['ok']:
+                        send_message(self.id, r['description'])
+                        return None
                     mycursor.execute("UPDATE msgs SET text = %s WHERE name = %s",
                                      (arg2, arg))
                     mydb.commit()
-                    send_message(self.id, f'Теперь {arg} будет выглядеть так:')
-                    text = get_text_from_db(arg)
-                    send_message(self.id, text)
                 else:
                     text = get_text_from_db(arg)
                     send_message_not_parse(self.id, text)
@@ -537,7 +544,11 @@ class InlineButton:
         # генерируем оплату
         if self.data == 'pay':
             self.answer_query_no_text()
-            pay_id = send_message(self.user_id, 'Создание оплаты...')
+            r = send_message(self.user_id, 'Создание оплаты...')
+            if not r['ok']:
+                send_message(self.user_id, 'Ошибка в создании оплаты, повторите попытку позже.')
+                return None
+            pay_id = r['result']['message_id']
             param = {'pay_id': pay_id, 'status': '❌ НЕ оплачено!'}
             text = get_text_from_db('pay_rule', param)
             edit_message(self.user_id, pay_id, text, "reply_markup", json.dumps(pay_check_inline_markup))
@@ -665,7 +676,7 @@ def send_message(chat_id, text, *args):  # Ф-ия отсылки сообщен
         url = URL + "sendMessage?chat_id={}&text={}&{}={}&{}={}&parse_mode=HTML".format(chat_id, text, args[0], args[1],
                                                                                         args[2], args[3])
     r = requests.get(url).json()
-    return r['result']['message_id']
+    return r
 
 def send_message_not_parse(chat_id, text):
     url = URL + "sendMessage?chat_id={}&text={}".format(chat_id, text)

@@ -9,7 +9,7 @@
 __docformat__ = 'reStructuredText'
 
 # code contributions from several people included, thanks to all.
-# some named: David Abrahams, Julien Letessier, Lele Gaifax, and others.
+# some named: David Abrahams, Julien Letessier, Lele Gaifax, and other_git.
 #
 # convention deactivate code by two # i.e. ##.
 
@@ -804,7 +804,7 @@ class CharMaps(object):
         0x00be: r'\textthreequarters{}', # 3/4 FRACTION
         0x00d7: r'\texttimes{}',         # × MULTIPLICATION SIGN
         0x00f7: r'\textdiv{}',           # ÷ DIVISION SIGN
-        # others
+        # other_git
         0x0192: r'\textflorin{}',        # LATIN SMALL LETTER F WITH HOOK
         0x02b9: r'\textasciiacute{}',    # MODIFIER LETTER PRIME
         0x02ba: r'\textacutedbl{}',      # MODIFIER LETTER DOUBLE PRIME
@@ -2494,7 +2494,7 @@ class LaTeXTranslator(nodes.NodeVisitor):
     #
     # In both cases, we want to use a typewriter/monospaced typeface.
     # For "real" literal-blocks, we can use \verbatim, while for all
-    # the others we must use \mbox or \alltt.
+    # the other_git we must use \mbox or \alltt.
     #
     # We can distinguish between the two kinds by the number of
     # siblings that compose this node: if it is composed by a

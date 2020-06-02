@@ -202,7 +202,7 @@ class Reporter:
         """
         Level-0, "DEBUG": an internal reporting issue. Typically, there is no
         effect on the processing. Level-0 system messages are handled
-        separately from the others.
+        separately from the other_git.
         """
         if self.debug_flag:
             return self.system_message(self.DEBUG_LEVEL, *args, **kwargs)
