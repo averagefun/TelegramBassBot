@@ -12,7 +12,7 @@ import mysql.connector
 #import use_proxy
 
 # MODE
-debug_mode = True
+debug_mode = False
 
 # Get cred
 def get_cred():
@@ -178,6 +178,7 @@ class User:
             if command == '/pay':
                 param = {'rate': p['rate']}
                 text = get_text_from_db('pay_system', param)
+                text += '\n\n'
                 text += get_text_from_db('products', param_prod)
                 send_message(self.id, text, 'reply_markup', json.dumps(pay_inline_markup))
                 return None
@@ -647,11 +648,15 @@ def lambda_handler(event, context):
 
     # debug mode
     if debug_mode and user.role != 'senior':
-        send_message(user.id, 'Извините, в данный момент бот отдыхает. Ведутся работы на сервере :)')
-        send_sticker(user.id, 'sleep')
         if user.status == 'start':
+            user.start_msg()
+            text = get_text_from_db('start_debug')
+            send_message(user.id, text)
+        else:
             text = get_text_from_db('sleep')
             send_message(user.id, text)
+            send_sticker(user.id, 'sleep')
+
         return None
 
     # проверяем: это сообщение или файл - находим общие ключи
