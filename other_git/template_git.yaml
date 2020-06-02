@@ -19,11 +19,11 @@ Resources:
         WriteCapacityUnits: 1
         ReadCapacityUnits: 1
       AttributeDefinitions:
-        - AttributeName: name
+        - AttributeName: cred_name
           AttributeType: S
       KeySchema:
         - KeyType: HASH
-          AttributeName: name
+          AttributeName: cred_name
 
   MsgHandler:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
@@ -41,7 +41,7 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName:
               !GetAtt BassBoostTrigger.TopicName
-        - DynamoDBReadPolicy:
+        - DynamoDBCrudPolicy:
             TableName:
               Ref: CredTableTBot
             

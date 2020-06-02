@@ -8,8 +8,8 @@ def get_cred():
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table('CredTableTBot')
     items = table.scan()['Items']
-    keys = [item['name'] for item in items]
-    values = [item['value'] for item in items]
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
     cred = dict(zip(keys, values))
     return cred
 

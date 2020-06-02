@@ -8,24 +8,25 @@ import requests
 import boto3
 import mysql.connector
 
-# uncomment this if run locally
-#import use_proxy
 
-# MODE
-debug_mode = False
+# uncomment this if run locally
+# import use_proxy
 
 # Get cred
 def get_cred():
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table('CredTableTBot')
     items = table.scan()['Items']
-    keys = [item['name'] for item in items]
-    values = [item['value'] for item in items]
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
     cred = dict(zip(keys, values))
     return cred
 
 
 cred = get_cred()
+
+# DEBUG MODE
+debug_mode = int(cred['debug_mode'])
 
 # TelegramBot
 Token = cred['bot_token']
@@ -47,7 +48,9 @@ tags = {'audio', 'voice', 'video_note', 'video'}
 products = {"inline_keyboard": [[{"text": "Купить Middle", 'callback_data': 'buy_middle'}]]}
 pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
 pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
-                                               [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}]]}
+                                               [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
+                                               [{"text": "Удалить платёжную сессию!",
+                                                 'callback_data': 'delete_payment'}]]}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'one_time_keyboard': True, 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'one_time_keyboard': True,
                     'resize_keyboard': True}
@@ -67,7 +70,7 @@ class User:
         self.event = event
         self.id = self.event['message']['chat']['id']
         self.username = self.event['message']['chat']['username']
-        mycursor.execute('SELECT * FROM users WHERE id = %s', (self.id, ))
+        mycursor.execute('SELECT * FROM users WHERE id = %s', (self.id,))
         self.user_info = mycursor.fetchone()
 
         # init new user
@@ -92,7 +95,7 @@ class User:
         self.role, self.balance, self.status, self.total = self.user_info[2:6]
 
         # get d_bal and maxsize
-        mycursor.execute("SELECT d_bal, maxsize FROM roles WHERE name = %s", (self.role, ))
+        mycursor.execute("SELECT d_bal, maxsize FROM roles WHERE name = %s", (self.role,))
         self.d_bal, self.maxsize = mycursor.fetchone()
 
     def new_user(self):
@@ -117,7 +120,7 @@ class User:
         # команды по ролям
         commands_list = {'junior': ['/start', '/stats', '/stop', '/pay', '/buy', '/help'],
                          'middle': [],
-                         'senior': ['/ban', '/unban', '/text', '/price', '/update']}
+                         'senior': ['/debug', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -148,9 +151,9 @@ class User:
 
         # удаление запроса
         elif command == '/stop':
-            mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id, ))
+            mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
             mydb.commit()
-            mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id, ))
+            mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
             mydb.commit()
             send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>')
             return None
@@ -172,8 +175,8 @@ class User:
             r = dict(zip(keys, values))
 
             param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['middle'][0],
-                     'max_to_add_mid': r['middle'][1], 'maxsize_mid': round(r['middle'][2] / 10 ** 6, 1),
-                     'maxsize_jun': round(r['junior'][2] / 10 ** 6, 1)}
+                          'max_to_add_mid': r['middle'][1], 'maxsize_mid': round(r['middle'][2] / 10 ** 6, 1),
+                          'maxsize_jun': round(r['junior'][2] / 10 ** 6, 1)}
 
             if command == '/pay':
                 param = {'rate': p['rate']}
@@ -208,18 +211,31 @@ class User:
             return None
 
         # senior
-        # ban пользователя
         if command not in commands_list['senior'] and self.role == 'senior':
             send_message(self.id, 'Такой команды не существует!')
             return None
+
+        # включение режима дебага
+        elif command == '/debug':
+            if arg:
+                # если указали 1 - включаем debug mode
+                debug = 1 if int(arg) else 0
+                update_dynamoDB('debug_mode', str(debug))
+                send_message(self.id, f"debug_mode установлен в {debug}")
+            else:
+                send_message(self.id, cred['debug_mode'])
+
+
+
+        # ban пользователя
         elif command == '/ban':
             if arg:
                 mycursor.execute("SELECT EXISTS(SELECT username FROM users WHERE username = %s)",
-                                 (arg[1:], ))
+                                 (arg[1:],))
                 user_exist = mycursor.fetchone()
                 if user_exist and arg != creator['username']:
                     mycursor.execute("UPDATE users SET role_ = 'ban' WHERE username = %s",
-                                     (arg[1:], ))
+                                     (arg[1:],))
                     mydb.commit()
                     send_message(self.id, f'Пользователь {arg} забанен!')
                 else:
@@ -238,7 +254,7 @@ class User:
         elif command == '/unban':
             if arg:
                 mycursor.execute("UPDATE users SET role_ = 'junior' WHERE username = %s",
-                                 (arg[1:], ))
+                                 (arg[1:],))
                 mydb.commit()
                 send_message(self.id, f'Пользователь {arg} разбанен!')
             else:
@@ -274,7 +290,7 @@ class User:
                     mydb.commit()
                     send_message(self.id, f'Теперь {arg} = {arg2} сек')
                 else:
-                    mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (arg, ))
+                    mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (arg,))
                     value_param = mycursor.fetchone()[0]
                     send_message_not_parse(self.id, value_param)
             else:
@@ -317,7 +333,7 @@ class User:
             mydb.commit()
 
             # обновляем статус
-            mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id, ))
+            mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
             mydb.commit()
 
         else:
@@ -351,7 +367,7 @@ class User:
         # обрезка файла
         elif self.status == "wait_cut":
             # находим длительность файла
-            mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id, ))
+            mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
             duration = mycursor.fetchone()[0]
 
             if self.text == 'Обрезать не нужно':
@@ -396,7 +412,7 @@ class User:
                     return None
 
             # обновляем статус на 2
-            mycursor.execute('UPDATE users SET status_ = "wait_bass_start" WHERE id = %s', (self.id, ))
+            mycursor.execute('UPDATE users SET status_ = "wait_bass_start" WHERE id = %s', (self.id,))
             mydb.commit()
 
         # начало баса
@@ -411,7 +427,7 @@ class User:
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
                                  'reply_markup', json.dumps(startbass_markup))
                     return None
-                mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id, ))
+                mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id,))
                 duration = mycursor.fetchone()
                 if not duration[1]:
                     f1 = duration[0]
@@ -431,7 +447,7 @@ class User:
 
             send_message(self.id, '<b>Выбери уровень баса:</b>', 'reply_markup', json.dumps(bass_markup))
             # обновляем статус
-            mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id, ))
+            mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
             mydb.commit()
 
 
@@ -444,7 +460,7 @@ class User:
                                  (l, self.id))
                 mydb.commit()
                 # обновляем статус на 4
-                mycursor.execute('UPDATE users SET status_ = "wait_revers" WHERE id = %s', (self.id, ))
+                mycursor.execute('UPDATE users SET status_ = "wait_revers" WHERE id = %s', (self.id,))
                 mydb.commit()
                 send_message(self.id, f'Что насчёт <b>реверса</b> (песня задом наперёд)?', 'reply_markup',
                              json.dumps(reverse_markup))
@@ -457,13 +473,13 @@ class User:
         # реверс/не реверс
         elif self.status == "wait_revers":
             if self.text == 'Реверсировать':
-                mycursor.execute('UPDATE bass_requests SET reverse_ = 1 WHERE id = %s', (self.id, ))
+                mycursor.execute('UPDATE bass_requests SET reverse_ = 1 WHERE id = %s', (self.id,))
                 mydb.commit()
             elif self.text != 'Не реверсировать':
                 send_message(self.id, 'Выберите вариант ответа из <b>установленных</b> значений!', 'reply_markup',
                              json.dumps(reverse_markup))
                 return None
-            mycursor.execute('SELECT * FROM bass_requests WHERE id = %s', (self.id, ))
+            mycursor.execute('SELECT * FROM bass_requests WHERE id = %s', (self.id,))
             # получаем весь запрос: duration, start_, end_, start_bass, bass_level, reverse_
             req = list(mycursor.fetchone()[2:8])
 
@@ -495,7 +511,7 @@ class User:
                          "Проверьте параметры запроса: \nФайл: <i>{} сек</i>, \nОбрезка: <i>{}</i>, \nНачало басса: <i>{}</i>, \nУровень баса: <i>{}</i>, \nРеверс: <i>{}</i>.".format(
                              req[0], req[1], req[2], level[req[3]], req[4]), 'reply_markup', json.dumps(final_markup))
             # обновляем статус
-            mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id, ))
+            mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id,))
             mydb.commit()
 
         # проверка правильности запроса
@@ -512,21 +528,23 @@ class User:
                     f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
                     (req_id, file_path, self.id))
                 mydb.commit()
-                mycursor.execute("UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s", (self.id, ))
+                mycursor.execute(
+                    "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
+                    (self.id,))
                 mydb.commit()
                 put_SNS(req_id)
             elif self.text == 'Отменить запрос':
                 send_message(self.id, 'Запрос отменён! Пришлите файл для нового запроса (mp3, ogg, mp4)')
-                mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id, ))
+                mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
                 mydb.commit()
-                mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id, ))
+                mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
                 mydb.commit()
             else:
                 send_message(self.id, 'Введите корректный ответ на вопрос!')
 
 
 def get_users(role):
-    mycursor.execute("SELECT id FROM users WHERE role_ = %s", (role, ))
+    mycursor.execute("SELECT id FROM users WHERE role_ = %s", (role,))
     users = [user[0] for user in mycursor.fetchall()]
     return users
 
@@ -553,8 +571,9 @@ class InlineButton:
             param = {'pay_id': pay_id, 'status': '❌ НЕ оплачено!'}
             text = get_text_from_db('pay_rule', param)
             edit_message(self.user_id, pay_id, text, "reply_markup", json.dumps(pay_check_inline_markup))
-            mycursor.execute("INSERT INTO payment_query(pay_id, user_id, username, start_query, status_) VALUES (%s, %s, %s, NOW() + INTERVAL 3 HOUR, %s)",
-                             (pay_id, self.user_id, self.username, "wait_for_payment"))
+            mycursor.execute(
+                "INSERT INTO payment_query(pay_id, user_id, username, start_query, status_) VALUES (%s, %s, %s, NOW() + INTERVAL 3 HOUR, %s)",
+                (pay_id, self.user_id, self.username, "wait_for_payment"))
             mydb.commit()
         elif self.data == 'check_payment':
             pay_check = pay.check_payment(self.msg_id, cred, mycursor, mydb)
@@ -575,8 +594,9 @@ class InlineButton:
                              f"Оплата успешно завершена!\n Вам начислено <b>{sec}</b> секунд")
             else:
                 if pay_check['error'] == 'Payment_not_found':
-                    self.answer_query('Повторите попытку проверки через нескольско секунд. Мы ещё не получили платёж от Qiwi!',
-                                      show_alert=True)
+                    self.answer_query(
+                        'Повторите попытку проверки через нескольско секунд. Мы ещё не получили платёж от Qiwi!',
+                        show_alert=True)
                 elif pay_check['error'] == 'already_complete':
                     self.answer_query('Вы уже успешно оплатили этот заказ!', show_alert=True)
                 else:
@@ -593,13 +613,19 @@ class InlineButton:
             send_message(self.user_id,
                          f"Сожалеем, что у вас возникли проблемы, опишите свою проблему в сообщении @{creator['username']}, прикрепите скриншот квитанции об оплате!")
 
+        elif self.data == 'delete_payment':
+            mycursor.execute("DELETE FROM payment_query WHERE pay_id = %s", (self.msg_id, ))
+            mydb.commit()
+            self.answer_query('Успешно удалено')
+            delete_message(self.user_id, self.msg_id)
+
         # товары
         else:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
             now = datetime.datetime.now()
             if self.data == 'buy_middle':
-                mycursor.execute("SELECT role_ FROM users WHERE id = %s", (self.user_id, ))
+                mycursor.execute("SELECT role_ FROM users WHERE id = %s", (self.user_id,))
                 role = mycursor.fetchone()[0]
                 if role == 'middle':
                     self.answer_query('Вы уже купили данный товар!', show_alert=True)
@@ -607,17 +633,18 @@ class InlineButton:
                 mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'price_mid'")
                 price = mycursor.fetchone()[0]
                 if balance >= price:
-                    mycursor.execute("UPDATE users SET balance = balance - %s, role_ = 'middle', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
-                                     (price, self.user_id))
+                    mycursor.execute(
+                        "UPDATE users SET balance = balance - %s, role_ = 'middle', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
+                        (price, self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
                     delta = datetime.timedelta(days=30, hours=3)
-                    role_end = (now+delta).date().strftime("%Y-%m-%d 23:59")
+                    role_end = (now + delta).date().strftime("%Y-%m-%d 23:59")
+                    send_sticker(self.user_id, 'money')
                     send_message(self.user_id, f"Вы успешно приобрели подписку middle до {role_end} по МСК.")
 
                 else:
                     self.answer_query("Недостаточно средств на балансе!", show_alert=True)
-
 
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
@@ -683,20 +710,29 @@ def send_message(chat_id, text, *args):  # Ф-ия отсылки сообщен
     r = requests.get(url).json()
     return r
 
+
 def send_message_not_parse(chat_id, text):
     url = URL + "sendMessage?chat_id={}&text={}".format(chat_id, text)
     requests.get(url)
+
 
 def edit_message(chat_id, message_id, text, *args):
     if len(args) == 0:
         url = URL + "editMessageText?chat_id={}&message_id={}&text={}&parse_mode=HTML".format(chat_id, message_id, text)
     elif len(args) == 2:
-        url = URL + "editMessageText?chat_id={}&message_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, message_id, text, args[0], args[1])
+        url = URL + "editMessageText?chat_id={}&message_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, message_id,
+                                                                                                    text, args[0],
+                                                                                                    args[1])
+    requests.get(url)
+
+
+def delete_message(chat_id, message_id):
+    url = URL + "deleteMessage?chat_id={}&message_id={}".format(chat_id, message_id)
     requests.get(url)
 
 
 def get_text_from_db(tag, param=None):
-    mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag, ))
+    mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag,))
     text = mycursor.fetchone()[0]
     if text:
         if param:
@@ -713,7 +749,7 @@ def get_text_from_db(tag, param=None):
 
 
 def send_sticker(chat_id, sticker):
-    mycursor.execute("SELECT stick_id FROM msgs WHERE name = %s", (sticker, ))
+    mycursor.execute("SELECT stick_id FROM msgs WHERE name = %s", (sticker,))
     stick = mycursor.fetchall()
     if stick:
         url = URL + "sendSticker?chat_id={}&sticker={}&parse_mode=HTML".format(chat_id,
@@ -734,7 +770,7 @@ def send_sticker(chat_id, sticker):
 
 def get_file(chat_id):
     # get file_id from db
-    mycursor.execute('SELECT file_id FROM bass_requests WHERE id = %s', (chat_id, ))
+    mycursor.execute('SELECT file_id FROM bass_requests WHERE id = %s', (chat_id,))
     file_id = mycursor.fetchone()[0]
     # make request
     url = URL + "getFile?file_id={}".format(file_id)
@@ -752,12 +788,18 @@ def put_SNS(message):
         Message=json.dumps(message)
     )
 
-# Future methods
-# def put_dynamDB(req_id):
-#     TableName = 'requests'
-#     DB = boto3.resource('dynamodb')
-#     table = DB.Table(TableName)
-#     response = table.put_item(
-#         Item= {
-#         "req_id": req_id
-#         })
+
+def update_dynamoDB(name, value):
+    DB = boto3.resource('dynamodb')
+    table = DB.Table('CredTableTBot')
+    response = table.update_item(
+        Key={
+            'cred_name': name,
+        },
+        UpdateExpression="set cred_value=:v",
+        ExpressionAttributeValues={
+            ':v': value,
+        },
+        ReturnValues="UPDATED_NEW"
+    )
+    return response
