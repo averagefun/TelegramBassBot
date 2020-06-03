@@ -28,19 +28,6 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 # Доступные форматы
 formats_ = ('mp3', 'ogg', 'mp4')
 
-
-# подключение к бд
-def connect_db():
-    # DataBase
-    mydb = mysql.connector.connect(
-        host=cred['db_host'],
-        user=cred['db_user'],
-        passwd=cred['db_passwd'],
-        database=cred['db_name']
-    )
-    mycursor = mydb.cursor()
-    return mycursor, mydb
-
 shutil.copy(r'/opt/ffmpeg/ffmpeg', r'/tmp/ffmpeg')
 shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
 os.chmod(r'/tmp/ffmpeg', 755)
@@ -173,6 +160,7 @@ def bass_line_freq(track, bass):
     return bass_factor
 
 
+# Telegram methods
 def delete_message(chat_id, message_id):
     url = URL + "deleteMessage?chat_id={}&message_id={}".format(chat_id, message_id)
     requests.get(url)
@@ -181,3 +169,16 @@ def delete_message(chat_id, message_id):
 def send_message(chat_id, text):
     url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
     requests.get(url)
+
+# AWS methods
+# подключение к бд
+def connect_db():
+    # DataBase
+    mydb = mysql.connector.connect(
+        host=cred['db_host'],
+        user=cred['db_user'],
+        passwd=cred['db_passwd'],
+        database=cred['db_name']
+    )
+    mycursor = mydb.cursor()
+    return mycursor, mydb

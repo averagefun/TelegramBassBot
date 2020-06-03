@@ -17,6 +17,34 @@ def get_cred():
 cred = get_cred()
 
 
+# event from CloudWatch
+def lambda_handler(event, context):
+    # если это не событие по графику, то игнорируем
+    if "time" not in event.keys():
+        return None
+
+    global mycursor
+    global mydb
+    # обновляем подключение к бд
+    mycursor, mydb = connect_db()
+
+    print(event)
+
+    # получение максимального количества секунд, когда работает автопополнение
+    mycursor.execute("SELECT * FROM roles")
+    roles = mycursor.fetchall()
+    keys = [role[0] for role in roles]
+    values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize, role_active
+    r = dict(zip(keys, values))
+
+    # обновляем таблицу
+    mycursor.execute(update_bal(r))
+    mydb.commit()
+    mycursor.execute(update_role())
+    mydb.commit()
+
+
+# Connect to RDS database
 def connect_db():
     # DataBase
     mydb = mysql.connector.connect(
@@ -59,36 +87,8 @@ def update_bal(r):
                 '''
 
 
-def update_role(r):
+def update_role():
     return f'''UPDATE users
                   SET role_ = 'junior',
                   role_end = NULL 
                   WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
-
-
-# event from CloudWatch
-def lambda_handler(event, context):
-    # если это не событие по графику, то игнорируем
-    if "time" not in event.keys():
-        return None
-
-    global mycursor
-    global mydb
-    # обновляем подключение к бд
-    mycursor, mydb = connect_db()
-
-    print(event)
-
-    # получение максимального количества секунд, когда работает автопополнение
-    mycursor.execute("SELECT * FROM roles")
-    roles = mycursor.fetchall()
-    keys = [role[0] for role in roles]
-    values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize, role_active
-    r = dict(zip(keys, values))
-
-    # обновляем таблицу
-    mycursor.execute(update_bal(r))
-    mydb.commit()
-    mycursor.execute(update_role(r))
-    mydb.commit()
-

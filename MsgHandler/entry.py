@@ -29,18 +29,6 @@ cred = get_cred()
 Token = cred['bot_token']
 URL = "https://api.telegram.org/bot{}/".format(Token)
 
-
-def connect_db():
-    # DataBase
-    mydb = mysql.connector.connect(
-        host=cred['db_host'],
-        user=cred['db_user'],
-        passwd=cred['db_passwd'],
-        database=cred['db_name']
-    )
-    mycursor = mydb.cursor()
-    return mycursor, mydb
-
 # Используемые типы
 tags = {'audio', 'voice', 'video_note', 'video'}
 
@@ -224,23 +212,21 @@ class User:
             roles = dict(zip(keys, values))
             if arg and (arg in keys):
                 if arg2:
-                    try:
-                        arg2 = int(arg2)
-                    except:
+                    if not arg2.isdigit():
+                        send_message(self.id, 'Неверный аргумент (укажите 0 или 1)')
                         return None
                     mycursor.execute("UPDATE roles SET role_active = %s WHERE name = %s",
-                                     (arg2, arg))
+                                     (int(arg2), arg))
                     mydb.commit()
                     send_message(self.id, f'Активность роли {arg} установлена в {arg2}')
                 else:
                     send_message(self.id, roles[arg])
             elif arg:
-                try:
-                    arg = int(arg)
-                except:
+                if not arg.isdigit():
+                    send_message(self.id, 'Неверный аргумент (укажите 0 или 1)')
                     return None
                 mycursor.execute("UPDATE roles SET role_active = %s WHERE name != 'senior'",
-                                 (arg,))
+                                 (int(arg),))
                 mydb.commit()
                 send_message(self.id, f'Активность всех пользователей = {arg}')
             else:
@@ -802,6 +788,20 @@ def get_file(chat_id):
 
 
 # AWS methods
+# RDS DataBase
+def connect_db():
+    # DataBase
+    mydb = mysql.connector.connect(
+        host=cred['db_host'],
+        user=cred['db_user'],
+        passwd=cred['db_passwd'],
+        database=cred['db_name']
+    )
+    mycursor = mydb.cursor()
+    return mycursor, mydb
+
+
+# publish to SNS topic
 def put_SNS(message):
     arn = cred['BassBoostTrigger_topic_arn']
     client = boto3.client('sns')
