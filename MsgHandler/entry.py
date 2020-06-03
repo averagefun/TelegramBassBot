@@ -248,11 +248,11 @@ class User:
             else:
                 mycursor.execute("SELECT username FROM users")
                 names = mycursor.fetchall()
-                send_message(self.id, 'Пользователи бота:\n' + ', '.join([name[0] for name in names]))
+                send_message(self.id, 'Пользователи бота:\n@' + ', @'.join([name[0] for name in names]))
                 mycursor.execute("SELECT username FROM users WHERE role_ = 'ban'")
                 ban_list = mycursor.fetchone()
                 if ban_list:
-                    send_message(self.id, '<b>Забаненные:</b>\n' + ','.join(ban_list))
+                    send_message(self.id, '<b>Забаненные:</b>\n@' + ', @'.join(ban_list))
                 else:
                     send_message(self.id, 'Нет забаненных пользователей.')
 
