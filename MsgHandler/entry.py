@@ -29,14 +29,17 @@ cred = get_cred()
 Token = cred['bot_token']
 URL = "https://api.telegram.org/bot{}/".format(Token)
 
-# DataBase
-mydb = mysql.connector.connect(
-    host=cred['db_host'],
-    user=cred['db_user'],
-    passwd=cred['db_passwd'],
-    database=cred['db_name']
-)
-mycursor = mydb.cursor()
+
+def connect_db():
+    # DataBase
+    mydb = mysql.connector.connect(
+        host=cred['db_host'],
+        user=cred['db_user'],
+        passwd=cred['db_passwd'],
+        database=cred['db_name']
+    )
+    mycursor = mydb.cursor()
+    return mycursor, mydb
 
 # Используемые типы
 tags = {'audio', 'voice', 'video_note', 'video'}
@@ -92,8 +95,8 @@ class User:
         self.role, self.balance, self.status, self.total = self.user_info[2:6]
 
         # get d_bal and maxsize
-        mycursor.execute("SELECT d_bal, maxsize FROM roles WHERE name = %s", (self.role,))
-        self.d_bal, self.maxsize = mycursor.fetchone()
+        mycursor.execute("SELECT d_bal, maxsize, role_active FROM roles WHERE name = %s", (self.role,))
+        self.d_bal, self.maxsize, self.role_active = mycursor.fetchone()
 
     def new_user(self):
         user_info = [self.id, self.username, "junior", 30, "start", 0, None, None]
@@ -114,11 +117,10 @@ class User:
         mydb.commit()
 
     def commands(self):
-        global cred
         # команды по ролям
         commands_list = {'junior': ['/start', '/stats', '/stop', '/pay', '/buy', '/help'],
                          'middle': [],
-                         'senior': ['/debug', '/ban', '/unban', '/text', '/price', '/update']}
+                         'senior': ['/active', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -169,7 +171,7 @@ class User:
             mycursor.execute("SELECT * FROM roles")
             roles = mycursor.fetchall()
             keys = [role[0] for role in roles]
-            values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize
+            values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize, role_active
             r = dict(zip(keys, values))
 
             param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['middle'][0],
@@ -213,19 +215,36 @@ class User:
             send_message(self.id, 'Такой команды не существует!')
             return None
 
-        # включение режима дебага
-        elif command == '/debug':
-            if arg:
-                # если указали 1 - включаем debug mode
-                debug = 1 if int(arg) else 0
-                update_dynamoDB('debug_mode', str(debug))
-                send_message(self.id, f"debug_mode установлен в {debug}")
+        # активирование ролей
+        elif command == '/active':
+            mycursor.execute("SELECT name, role_active FROM roles")
+            roles = mycursor.fetchall()
+            keys = [role[0] for role in roles]
+            values = [role[1] for role in roles]
+            roles = dict(zip(keys, values))
+            if arg and (arg in keys):
+                if arg2:
+                    try:
+                        arg2 = int(arg2)
+                    except:
+                        return None
+                    mycursor.execute("UPDATE roles SET role_active = %s WHERE name = %s",
+                                     (arg2, arg))
+                    mydb.commit()
+                    send_message(self.id, f'Активность роли {arg} установлена в {arg2}')
+                else:
+                    send_message(self.id, roles[arg])
+            elif arg:
+                try:
+                    arg = int(arg)
+                except:
+                    return None
+                mycursor.execute("UPDATE roles SET role_active = %s WHERE name != 'senior'",
+                                 (arg,))
+                mydb.commit()
+                send_message(self.id, f'Активность всех пользователей = {arg}')
             else:
-                # update cred
-                cred = get_cred()
-                send_message(self.id, cred['debug_mode'])
-
-
+                send_message(self.id, f"Активность: {roles}")
 
         # ban пользователя
         elif command == '/ban':
@@ -590,6 +609,7 @@ class InlineButton:
                 mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s",
                                  (sec, self.user_id))
                 mydb.commit()
+                send_sticker(self.user_id, 'money')
                 send_message(self.user_id,
                              f"Оплата успешно завершена!\n Вам начислено <b>{sec}</b> секунд")
             else:
@@ -614,7 +634,7 @@ class InlineButton:
                          f"Сожалеем, что у вас возникли проблемы, опишите свою проблему в сообщении @{creator['username']}, прикрепите скриншот квитанции об оплате!")
 
         elif self.data == 'delete_payment':
-            mycursor.execute("DELETE FROM payment_query WHERE pay_id = %s", (self.msg_id, ))
+            mycursor.execute("DELETE FROM payment_query WHERE pay_id = %s", (self.msg_id,))
             mydb.commit()
             self.answer_query('Успешно удалено')
             delete_message(self.user_id, self.msg_id)
@@ -640,7 +660,6 @@ class InlineButton:
                     self.answer_query("Успешно!")
                     delta = datetime.timedelta(days=30, hours=3)
                     role_end = (now + delta).date().strftime("%Y-%m-%d 23:59")
-                    send_sticker(self.user_id, 'money')
                     send_message(self.user_id, f"Вы успешно приобрели подписку middle до {role_end} по МСК.")
 
                 else:
@@ -657,6 +676,11 @@ class InlineButton:
 
 
 def lambda_handler(event, context):
+    global mycursor
+    global mydb
+    # обновляем подключение к бд
+    mycursor, mydb = connect_db()
+
     print(event)
 
     # проверка на нажатие инлайн кнопки
@@ -673,14 +697,8 @@ def lambda_handler(event, context):
                      'Сожалеем, но вы <b>забанены</b>. Если вам кажется, что это ошибка, обратитесь в поддержку.')
         return None
 
-    # Update cred
-    cred = get_cred()
-
-    # UPDATE DEBUG MODE
-    debug_mode = int(cred['debug_mode'])
-
     # debug mode
-    if debug_mode and user.role != 'senior':
+    if user.role_active == 0:
         if user.status == 'start':
             user.start_msg()
             text = get_text_from_db('start_debug')
@@ -689,7 +707,6 @@ def lambda_handler(event, context):
             text = get_text_from_db('sleep')
             send_message(user.id, text)
             send_sticker(user.id, 'sleep')
-
         return None
 
     # проверяем: это сообщение или файл - находим общие ключи
@@ -794,19 +811,19 @@ def put_SNS(message):
         Message=json.dumps(message)
     )
 
-
-def update_dynamoDB(name, value):
-    global cred
-    DB = boto3.resource('dynamodb')
-    table = DB.Table('CredTableTBot')
-    response = table.update_item(
-        Key={
-            'cred_name': name,
-        },
-        UpdateExpression="set cred_value=:v",
-        ExpressionAttributeValues={
-            ':v': value,
-        },
-        ReturnValues="UPDATED_NEW"
-    )
-    return response
+# Future methods
+# def update_dynamoDB(name, value):
+#     global cred
+#     DB = boto3.resource('dynamodb')
+#     table = DB.Table('CredTableTBot')
+#     response = table.update_item(
+#         Key={
+#             'cred_name': name,
+#         },
+#         UpdateExpression="set cred_value=:v",
+#         ExpressionAttributeValues={
+#             ':v': value,
+#         },
+#         ReturnValues="UPDATED_NEW"
+#     )
+#     return response

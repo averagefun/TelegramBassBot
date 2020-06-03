@@ -13,14 +13,27 @@ last_query TIMESTAMP,
 role_end TIMESTAMP);
 
 # roles
+drop table roles;
 CREATE TABLE roles (
 name VARCHAR(127) NOT NULL UNIQUE,
 d_bal SMALLINT NOT NULL,
 max_to_add SMALLINT NOT NULL,
-maxsize INT NOT NULL);
-INSERT INTO roles VALUES ('junior', 30, 60, 1000000);
-INSERT INTO roles VALUES ('middle', 80, 200, 2000000);
-INSERT INTO roles VALUES ('senior', 150, 350, 3500000);
+maxsize INT NOT NULL,
+role_active BINARY NOT NULL);
+INSERT INTO roles VALUES ('junior', 30, 60, 1000000, 1);
+INSERT INTO roles VALUES ('middle', 80, 200, 2000000, 1);
+INSERT INTO roles VALUES ('senior', 150, 350, 3500000, 1);
+select * from roles;
+
+CREATE TABLE roles (
+name VARCHAR(127) NOT NULL UNIQUE,
+d_bal SMALLINT NOT NULL,
+max_to_add SMALLINT NOT NULL,
+maxsize INT NOT NULL,
+role_active BIT NOT NULL);
+INSERT INTO roles VALUES ('junior', 30, 60, 1000000, 1);
+INSERT INTO roles VALUES ('middle', 80, 200, 2000000, 1);
+INSERT INTO roles VALUES ('senior', 150, 350, 3500000, 1);
 select * from roles;
 
 # sticker and text table (messages table)

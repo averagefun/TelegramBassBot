@@ -28,14 +28,18 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 # Доступные форматы
 formats_ = ('mp3', 'ogg', 'mp4')
 
-# DataBase
-mydb = mysql.connector.connect(
-    host=cred['db_host'],
-    user=cred['db_user'],
-    passwd=cred['db_passwd'],
-    database=cred['db_name']
-)
-mycursor = mydb.cursor()
+
+# подключение к бд
+def connect_db():
+    # DataBase
+    mydb = mysql.connector.connect(
+        host=cred['db_host'],
+        user=cred['db_user'],
+        passwd=cred['db_passwd'],
+        database=cred['db_name']
+    )
+    mycursor = mydb.cursor()
+    return mycursor, mydb
 
 shutil.copy(r'/opt/ffmpeg/ffmpeg', r'/tmp/ffmpeg')
 shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
@@ -47,6 +51,11 @@ accentuate_db = 15
 
 
 def lambda_handler(event, context):
+    global mycursor
+    global mydb
+    # обновляем подключение к бд
+    mycursor, mydb = connect_db()
+
     print(event)
 
     message = event['Records'][0]['Sns']['Message']
