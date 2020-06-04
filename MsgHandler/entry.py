@@ -81,8 +81,8 @@ class User:
 
 
         # get d_bal and maxsize
-        mycursor.execute("SELECT d_bal, maxsize, role_active FROM roles WHERE name = %s", (self.role,))
-        self.d_bal, self.maxsize, self.role_active = mycursor.fetchone()
+        mycursor.execute("SELECT d_bal, max_to_add, maxsize, role_active FROM roles WHERE name = %s", (self.role,))
+        self.d_bal, self.max_to_add, self.maxsize, self.role_active = mycursor.fetchone()
 
     def new_user(self):
         user_info = [self.id, self.username, "junior", 30, "start", 0]
@@ -106,9 +106,9 @@ class User:
 
     def commands(self):
         # команды по ролям
-        commands_list = {'junior': ['/start', '/stats', '/stop', '/pay', '/buy', '/help'],
+        commands_list = {'junior': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
                          'middle': [],
-                         'senior': ['/active', '/ban', '/unban', '/text', '/price', '/update']}
+                         'senior': ['/active', '/users', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -146,6 +146,13 @@ class User:
             send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>')
             return None
 
+        elif command == '/help':
+            param = {'role': self.role,'d_bal': self.d_bal, 'max_to_add': self.max_to_add,
+                     'maxsize': round(self.maxsize / 10 ** 6, 1)}
+            text = get_text_from_db('help', param)
+            send_message(self.id, text)
+            return None
+
         # Оплата
         elif command in pays_command:
             # получаем цены на товары и курс секунд сейчас
@@ -180,11 +187,13 @@ class User:
                 return None
 
         elif command == '/stats':
-            send_message(self.id,
-                         f'Ваш баланс: {self.balance} сек,\nДневное пополнение: {self.d_bal} сек,\nВаша роль: {self.role},\nМаксимальный объём: {self.maxsize / 1000000} Мб,\nВсего было использовано: {self.total} сек')
+            param = {'balance': self.balance, 'role': self.role,
+                     'd_bal': self.d_bal, 'max_to_add': self.max_to_add, 'total': self.total}
+            text = get_text_from_db('stats', param)
+            send_message(self.id, text)
             return None
 
-        elif command == '/help':
+        elif command == '/commands':
             text = 'Доступные команды:\n'
             for item in commands_list.items():
                 text += ', '.join(item[1]) + '| '
@@ -232,6 +241,35 @@ class User:
             else:
                 send_message(self.id, f"Активность: {roles}")
 
+        # статистика по пользователям
+        elif command == '/users':
+            param = {'show': 'username', 'count': 'count(*)'}
+            if arg in param:
+                req = f"SELECT {param[arg]} FROM users"
+                if arg2 == 'all_active':
+                    req += " WHERE last_query IS NOT NULL"
+                elif arg2 == 'today':
+                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR)"
+                elif arg2 == 'today_active':
+                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) and last_query IS NOT NULL"
+
+                mycursor.execute(req)
+                res = mycursor.fetchall()
+                # проверяем на пустой результат
+                if res:
+                    if arg == 'show':
+                        msg = ', @'.join([r[0] for r in res])
+                    else:
+                        msg = res[0][0]
+                    send_message(self.id, msg)
+                else:
+                    send_message(self.id, "Пустой результат!")
+            else:
+                # при отсутсвии аргумента выводим количество пользователей
+                mycursor.execute("SELECT count(*), sum(total) FROM users")
+                res = mycursor.fetchone()
+                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}")
+
         # ban пользователя
         elif command == '/ban':
             if arg:
@@ -246,9 +284,6 @@ class User:
                 else:
                     send_message(self.id, f'Пользователь {arg} <b>не найден</b>!')
             else:
-                mycursor.execute("SELECT username FROM users")
-                names = mycursor.fetchall()
-                send_message(self.id, 'Пользователи бота:\n@' + ', @'.join([name[0] for name in names]))
                 mycursor.execute("SELECT username FROM users WHERE role_ = 'ban'")
                 ban_list = mycursor.fetchone()
                 if ban_list:
@@ -759,11 +794,9 @@ def get_text_from_db(tag, param=None):
 
 def send_sticker(chat_id, sticker):
     mycursor.execute("SELECT stick_id FROM msgs WHERE name = %s", (sticker,))
-    stick = mycursor.fetchall()
+    stick = mycursor.fetchone()[0]
     if stick:
-        url = URL + "sendSticker?chat_id={}&sticker={}&parse_mode=HTML".format(chat_id,
-                                                                               stick[random.randint(0,
-                                                                                                    len(stick) - 1)][0])
+        url = URL + "sendSticker?chat_id={}&sticker={}&parse_mode=HTML".format(chat_id, stick)
         try:
             r = requests.get(url).json()
             return r['result']['message_id']
