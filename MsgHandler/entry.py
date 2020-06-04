@@ -63,12 +63,11 @@ class User:
 
         # init new user
         if not self.user_info:
-            self.user_info = self.new_user()
+            self.role, self.balance, self.status, self.total = self.new_user()[2:6]
+        else:
+            self.role, self.balance, self.status, self.total = self.user_info[4:8]
 
         '''  SQL
-                 user_info = [id,username, role_,  balance, status_, total, last_query]
-                               0     1       2       3        4        5        6
-
                 status_:
                     start : начальное приветствие,
                     wait_file: бот ожидает файл,
@@ -80,19 +79,20 @@ class User:
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
-        self.role, self.balance, self.status, self.total = self.user_info[2:6]
 
         # get d_bal and maxsize
         mycursor.execute("SELECT d_bal, maxsize, role_active FROM roles WHERE name = %s", (self.role,))
         self.d_bal, self.maxsize, self.role_active = mycursor.fetchone()
 
     def new_user(self):
-        user_info = [self.id, self.username, "junior", 30, "start", 0, None, None]
+        user_info = [self.id, self.username, "junior", 30, "start", 0]
         # init seniors
         if self.id == creator['id']:
             user_info[2:4] = 'senior', 300
             send_message(self.id, 'Привет! Создатель!')
-        mycursor.execute(f"INSERT INTO users VALUE (%s, %s, %s, %s, %s, %s, %s, %s)", user_info)
+        mycursor.execute(
+            f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUE 
+                (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s)''', user_info)
         mydb.commit()
         return user_info
 
