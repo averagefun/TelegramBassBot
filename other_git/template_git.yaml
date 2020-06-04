@@ -90,7 +90,7 @@ Resources:
         TimeEvent:
           Type: Schedule
           Properties:
-            Schedule: "rate(24 hours)"
+            Schedule: "cron(10 21 * * ? *)"
 
 
 
