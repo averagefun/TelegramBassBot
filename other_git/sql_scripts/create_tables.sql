@@ -13,7 +13,6 @@ status_ VARCHAR(65) NOT NULL,
 total INT,
 last_query TIMESTAMP,
 role_end TIMESTAMP);
-select * from users;
 
 # roles
 drop table roles;
