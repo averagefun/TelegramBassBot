@@ -18,7 +18,7 @@ INSERT INTO msgs(name, stick_id) VALUES(
 );
 select * from msgs;
 
-# СТИКЕРЫ + ТЕКСТ
+# ДОБАВИТЬ СТИКЕРЫ + ТЕКСТ
 INSERT INTO msgs(name, stick_id) VALUES(
 "tag",
 "sticker_id","

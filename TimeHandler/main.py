@@ -38,9 +38,9 @@ def lambda_handler(event, context):
     r = dict(zip(keys, values))
 
     # обновляем таблицу
-    mycursor.execute(update_bal(r))
-    mydb.commit()
     mycursor.execute(update_role())
+    mydb.commit()
+    mycursor.execute(update_bal(r))
     mydb.commit()
 
 
