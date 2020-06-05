@@ -258,7 +258,7 @@ class User:
                 # проверяем на пустой результат
                 if res:
                     if arg == 'show':
-                        msg = ', @'.join([r[0] for r in res])
+                        msg = '@' + ', @'.join([r[0] for r in res])
                     else:
                         msg = res[0][0]
                     send_message(self.id, msg)
