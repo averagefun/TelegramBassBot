@@ -53,7 +53,7 @@ Resources:
         CodeUri: BassBoost/
         Handler: louder.lambda_handler
         Timeout: 40
-        MemorySize: 1024
+        MemorySize: 2768
         Runtime: python3.7
         Policies:
           - DynamoDBReadPolicy:
