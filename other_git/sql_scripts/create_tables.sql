@@ -15,16 +15,15 @@ last_query TIMESTAMP,
 role_end TIMESTAMP);
 
 # roles
-drop table roles;
 CREATE TABLE roles (
 name VARCHAR(127) NOT NULL UNIQUE,
 d_bal SMALLINT NOT NULL,
 max_to_add SMALLINT NOT NULL,
-maxsize INT NOT NULL,
-role_active BINARY NOT NULL);
-INSERT INTO roles VALUES ('junior', 30, 60, 1000000, 1);
-INSERT INTO roles VALUES ('middle', 80, 200, 2000000, 1);
-INSERT INTO roles VALUES ('senior', 150, 350, 3500000, 1);
+max_sec SMALLINT NOT NULL,
+role_active BIT NOT NULL);
+INSERT INTO roles VALUES ('junior', 40, 100, 100, 1);
+INSERT INTO roles VALUES ('middle', 100, 210, 150, 1);
+INSERT INTO roles VALUES ('senior', 150, 350, 320, 1);
 select * from roles;
 
 CREATE TABLE roles (
@@ -37,6 +36,18 @@ INSERT INTO roles VALUES ('junior', 30, 60, 1000000, 1);
 INSERT INTO roles VALUES ('middle', 80, 200, 2000000, 1);
 INSERT INTO roles VALUES ('senior', 150, 350, 3500000, 1);
 select * from roles;
+
+# bass_requests table
+CREATE TABLE bass_requests(
+id INT UNIQUE,
+file_id VARCHAR(255),
+duration SMALLINT,
+start_ SMALLINT,
+end_ SMALLINT,
+start_bass SMALLINT,
+bass_level SMALLINT,
+file_path VARCHAR(255),
+req_id INT UNIQUE);
 
 # sticker and text table (messages table)
 CREATE TABLE msgs(

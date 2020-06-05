@@ -59,8 +59,7 @@ def lambda_handler(event, context):
     duration = req[3:5]
     start_bass = req[5]
     bass_level = req[6]
-    reverse = True if req[7] else False
-    file_path = req[8]
+    file_path = req[7]
     format_ = file_path[-3:].replace('oga', 'ogg')
 
     if format_ not in formats_:
@@ -90,7 +89,7 @@ def lambda_handler(event, context):
     # преобразование файла >> сохрание в tmp под форматом mp3
     filename2 = f'{chat_id}_{time_}.mp3'
     with open(f'/tmp/{filename2}', 'wb') as file:
-        main_audio(filename1, chat_id, format_, bass_level, reverse, duration, start_bass).export(file,
+        main_audio(filename1, chat_id, format_, bass_level, duration, start_bass).export(file,
                                                                                                   format="mp3")
 
     # удаляем запрос и меняем статус
@@ -113,14 +112,15 @@ def lambda_handler(event, context):
     mycursor.execute(f'SELECT balance FROM users WHERE id = {chat_id}')
     balance = mycursor.fetchall()[0][0]
     send_message(chat_id,
-                 f'Запрос успешно завершён!\nБаланс: {balance} сек.\n<i><b>Для нового запроса отправьте файл</b> (mp3, ogg, mp4)</i>')
+                 f'Запрос успешно завершён!\nБаланс: {balance} сек.' +
+                 '\n<i><b>Для нового запроса отправьте файл</b> (mp3, ogg, mp4)</i>')
 
     # удаление ненужных файлов из темпа
     os.remove(f'/tmp/{filename1}')
     os.remove(f'/tmp/{filename2}')
 
 
-def main_audio(filename, chat_id, format_, bass, reverse=False, dur=None, start_b=None):
+def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     sample = AudioSegment.from_file(f'/tmp/{filename}', format=format_)
 
     # обрезка
@@ -144,10 +144,7 @@ def main_audio(filename, chat_id, format_, bass, reverse=False, dur=None, start_
     if start_b:
         combined = start_ + combined
 
-    if reverse:
-        return combined.reverse()
-    else:
-        return combined
+    return combined
 
 
 def bass_line_freq(track, bass):

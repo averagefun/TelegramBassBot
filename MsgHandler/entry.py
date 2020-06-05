@@ -24,6 +24,14 @@ def get_cred():
 
 
 cred = get_cred()
+# convert to int some values
+if cred['maxsize'].isdigit():
+    cred['maxsize'] = int(cred['maxsize'])
+else:
+    cred['maxsize'] = 9000000
+
+if cred['creator_id'].isdigit():
+    cred['creator_id'] = int(cred['creator_id'])
 
 # TelegramBot
 Token = cred['bot_token']
@@ -45,12 +53,10 @@ startbass_markup = {'keyboard': [['По умолчанию (с самого на
 level = ['Лайтово', 'Средняя прожарка', 'Долбит нормально', 'Минус уши сразу']
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
-reverse_markup = {'keyboard': [['Реверсировать'], ['Не реверсировать']], 'one_time_keyboard': True,
-                  'resize_keyboard': True}
-final_markup = {'keyboard': [['Всё верно!'], ['Отменить зарос.']], 'one_time_keyboard': True, 'resize_keyboard': True}
+final_markup = {'keyboard': [['Всё верно!'], ['Отменить запрос']], 'one_time_keyboard': True, 'resize_keyboard': True}
 
 # seniors
-creator = {'id': int(cred['creator_id']), 'username': cred['creator_username']}
+creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 
 
 class User:
@@ -74,18 +80,17 @@ class User:
                     wait_cut: бот ожидает ввод обрезки файла,
                     wait_bass_start: бот ожидает ввода начала басса,
                     wait_bass_level: бот ожидает ввод уровня басса,
-                    wait_revers: бот ожидает ввода реверса,
                     wait_correct_data: бот ожидает подтверждения правильности введённых данных
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
 
         # get d_bal and maxsize
-        mycursor.execute("SELECT d_bal, max_to_add, maxsize, role_active FROM roles WHERE name = %s", (self.role,))
-        self.d_bal, self.max_to_add, self.maxsize, self.role_active = mycursor.fetchone()
+        mycursor.execute("SELECT d_bal, max_to_add, max_sec, role_active FROM roles WHERE name = %s", (self.role,))
+        self.d_bal, self.max_to_add, self.max_sec, self.role_active = mycursor.fetchone()
 
     def new_user(self):
-        user_info = [self.id, self.username, "junior", 30, "start", 0]
+        user_info = [self.id, self.username, "junior", 50, "start", 0]
         # init seniors
         if self.id == creator['id']:
             user_info[2:4] = 'senior', 300
@@ -147,8 +152,8 @@ class User:
             return None
 
         elif command == '/help':
-            param = {'role': self.role,'d_bal': self.d_bal, 'max_to_add': self.max_to_add,
-                     'maxsize': round(self.maxsize / 10 ** 6, 1)}
+            param = {'role': self.role, 'd_bal': self.d_bal, 'max_to_add': self.max_to_add,
+                     'maxsize': round(cred['maxsize']/10**6), 'max_sec': self.max_sec}
             text = get_text_from_db('help', param)
             send_message(self.id, text)
             return None
@@ -166,12 +171,12 @@ class User:
             mycursor.execute("SELECT * FROM roles")
             roles = mycursor.fetchall()
             keys = [role[0] for role in roles]
-            values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize, role_active
+            values = [role[1:] for role in roles]  # d_bal, max_to_add, max_sec, role_active
             r = dict(zip(keys, values))
 
-            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['middle'][0],
-                          'max_to_add_mid': r['middle'][1], 'maxsize_mid': round(r['middle'][2] / 10 ** 6, 1),
-                          'maxsize_jun': round(r['junior'][2] / 10 ** 6, 1)}
+            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['middle'][0], 'max_to_add_mid': r['middle'][1],
+                          'max_sec_mid': r['middle'][2], 'd_bal_jun': r['junior'][0], 'max_to_add_jun': r['junior'][1],
+                          'max_sec_jun': r['junior'][2]}
 
             if command == '/pay':
                 param = {'rate': p['rate']}
@@ -187,8 +192,8 @@ class User:
                 return None
 
         elif command == '/stats':
-            param = {'balance': self.balance, 'role': self.role,
-                     'd_bal': self.d_bal, 'max_to_add': self.max_to_add, 'total': self.total}
+            param = {'balance': self.balance, 'role': self.role, 'd_bal': self.d_bal,
+                     'max_sec': self.max_sec, 'max_to_add': self.max_to_add, 'total': self.total}
             text = get_text_from_db('stats', param)
             send_message(self.id, text)
             return None
@@ -361,25 +366,31 @@ class User:
 
         # проверка на длительность и размер файла
         duration = round(audio['duration'])
-        if (self.balance >= 10) and (audio['file_size'] < self.maxsize):
-
+        if audio['file_size'] > cred['maxsize']:
             send_message(self.id,
-                         'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b> Пример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
-                         'reply_markup', json.dumps(cut_markup))
-
-            # начинаем формировать запрос
-            mycursor.execute("INSERT INTO bass_requests (id, file_id, duration) VALUES (%s, %s, %s)", (
-                self.id, audio['file_id'], duration))
-            mydb.commit()
-
-            # обновляем статус
-            mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
-            mydb.commit()
-
-        else:
+                         f'''Мы не работаем с файлами больше {round(cred['maxsize']/10**6)} Мб.  
+                         <b>Выберите файл поменьше!</b>''')
+            return None
+        if self.balance < 10:
             send_message(self.id,
-                         'У вас на балансе менее <b>10</b> секунд или файл больше <b>{}</b> Мб (: Выберите запись поменьше или зайдите завтра'.format(
-                             round(self.maxsize / 1000000, 2)))
+                         'Для выполнения запроса на вашем балансе должно быть больше 10 секунд!' +
+                         '\n(/stats - узнать баланс)' +
+                         '\n(/help - как пополнить баланс)')
+            return None
+
+        send_message(self.id,
+                        'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
+                        '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
+                        'reply_markup', json.dumps(cut_markup))
+
+        # начинаем формировать запрос
+        mycursor.execute("INSERT INTO bass_requests (id, file_id, duration) VALUES (%s, %s, %s)", (
+            self.id, audio['file_id'], duration))
+        mydb.commit()
+
+        # обновляем статус
+        mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
+        mydb.commit()
 
     def msg(self):
         # пытаемся распознать текст, иначе понимаем что юзер скинул неизвестный документ
@@ -412,14 +423,17 @@ class User:
 
             if self.text == 'Обрезать не нужно':
                 # проверка на длительность
-                if self.balance > duration:
+                if self.balance < duration:
+                    cut = self.balance if self.balance < self.max_sec else self.max_sec
                     send_message(self.id,
-                                 'Ок! Теперь укажи, с какой секунды начинается бас. Пример "5.2" - с 5.2 секунды.',
-                                 'reply_markup', json.dumps(startbass_markup))
-                else:
-                    send_message(self.id,
-                                 f'У вас не хватает секунд!\n(Баланс: {self.balance} сек, Файл: {duration} сек) \nВыберите обрезку или /stop для отмены запроса.')
-                    return None
+                                 '<b>Внимание!</b>\n' +
+                                 f'У вас недостаточно секунд для полной песни, песня будет обрезана до {cut} сек!')
+                    mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
+                                     (0, cut, self.id))
+                    mydb.commit()
+                send_message(self.id,
+                             'Теперь укажи, с какой секунды начинается бас.\nПример "5.2" - с 5.2 секунды.',
+                             'reply_markup', json.dumps(startbass_markup))
             else:
                 s = self.text.split()
                 # проверка, что введены именно ЧИСЛА
@@ -438,12 +452,15 @@ class User:
                                          (f0, f1, self.id))
                         mydb.commit()
                         send_message(self.id,
-                                     'Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b> \nПример: "5.2" - с 5.2 секунды. \n<i>Указывай время с начала уже обрезанной песни!</i> ',
-                                     'reply_markup', json.dumps(startbass_markup))
+                                     '''Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>  
+                                        Пример: "5.2" - с 5.2 секунды.  
+                                        <i>Указывай время с начала уже обрезанной песни!</i>''',
+                                        'reply_markup', json.dumps(startbass_markup))
                     # не хватает секунд
                     else:
                         send_message(self.id,
-                                     f'У вас не хватает секунд!\n(Баланс: {self.balance} сек, Файл: {duration} сек) \nВыберите более узкую или /stop для отмены запроса.')
+                                     f'У вас не хватает секунд для такой обрезки!\n(Баланс: {self.balance} сек)' +
+                                     '\nВыберите более узкую или /stop для отмены запроса.')
                         return None
                 else:
                     send_message(self.id,
@@ -490,7 +507,6 @@ class User:
             mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
             mydb.commit()
 
-
         # выбор уровня баса
         elif self.status == "wait_bass_level":
             if self.text in level:
@@ -500,27 +516,18 @@ class User:
                                  (l, self.id))
                 mydb.commit()
                 # обновляем статус на 4
-                mycursor.execute('UPDATE users SET status_ = "wait_revers" WHERE id = %s', (self.id,))
+                mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id,))
                 mydb.commit()
-                send_message(self.id, f'Что насчёт <b>реверса</b> (песня задом наперёд)?', 'reply_markup',
-                             json.dumps(reverse_markup))
+
             # непонятный уровень баса, введённый пользователем
             else:
                 send_message(self.id,
                              'Такого уровня баса ещё не существует. Выберите уровень из <b>установленных значений!</b>',
                              'reply_markup', json.dumps(bass_markup))
-
-        # реверс/не реверс
-        elif self.status == "wait_revers":
-            if self.text == 'Реверсировать':
-                mycursor.execute('UPDATE bass_requests SET reverse_ = 1 WHERE id = %s', (self.id,))
-                mydb.commit()
-            elif self.text != 'Не реверсировать':
-                send_message(self.id, 'Выберите вариант ответа из <b>установленных</b> значений!', 'reply_markup',
-                             json.dumps(reverse_markup))
                 return None
+
             mycursor.execute('SELECT * FROM bass_requests WHERE id = %s', (self.id,))
-            # получаем весь запрос: duration, start_, end_, start_bass, bass_level, reverse_
+            # получаем весь запрос: duration, start_, end_, start_bass, bass_level
             req = list(mycursor.fetchone()[2:8])
 
             # ф-ия обработки значений req
@@ -537,19 +544,14 @@ class User:
                     req[2] = 'C начала трека'
                 else:
                     req[2] = f'с {req[2]} сек'
-
-                # реверс
-                if req[4]:
-                    req[4] = 'да'
-                else:
-                    req[4] = 'нет'
                 return req
 
             req = conv(req)
 
             send_message(self.id,
-                         "Проверьте параметры запроса: \nФайл: <i>{} сек</i>, \nОбрезка: <i>{}</i>, \nНачало басса: <i>{}</i>, \nУровень баса: <i>{}</i>, \nРеверс: <i>{}</i>.".format(
-                             req[0], req[1], req[2], level[req[3]], req[4]), 'reply_markup', json.dumps(final_markup))
+                         ('Проверьте параметры запроса: \nФайл: <i>{} сек</i>, \nОбрезка: <i>{}</i>,' +
+                          '\nНачало басса: <i>{}</i>, \nУровень баса: <i>{}</i>.').format(
+                                req[0], req[1], req[2], level[req[3]], req[4]), 'reply_markup', json.dumps(final_markup))
             # обновляем статус
             mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id,))
             mydb.commit()
@@ -562,7 +564,7 @@ class User:
                 req_id = send_sticker(self.id, 'loading')
                 file = get_file(self.id)
                 # аварийная проверка на размер
-                assert file['result']['file_size'] <= self.maxsize
+                assert file['result']['file_size'] <= cred['maxsize']
                 file_path = file['result']['file_path']
                 mycursor.execute(
                     f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
