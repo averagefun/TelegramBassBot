@@ -28,7 +28,7 @@ cred = get_cred()
 if cred['maxsize'].isdigit():
     cred['maxsize'] = int(cred['maxsize'])
 else:
-    cred['maxsize'] = 9000000
+    cred['maxsize'] = 10000000
 
 if cred['creator_id'].isdigit():
     cred['creator_id'] = int(cred['creator_id'])
@@ -90,13 +90,13 @@ class User:
         self.d_bal, self.max_to_add, self.max_sec, self.role_active = mycursor.fetchone()
 
     def new_user(self):
-        user_info = [self.id, self.username, "junior", 50, "start", 0]
+        user_info = [self.id, self.username, "junior", 150, "start", 0]
         # init seniors
         if self.id == creator['id']:
             user_info[2:4] = 'senior', 300
             send_message(self.id, 'Привет! Создатель!')
         mycursor.execute(
-            f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUE 
+            f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUE
                 (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s)''', user_info)
         mydb.commit()
         return user_info
@@ -113,7 +113,7 @@ class User:
         # команды по ролям
         commands_list = {'junior': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
                          'middle': [],
-                         'senior': ['/active', '/users', '/ban', '/unban', '/text', '/price', '/update']}
+                         'senior': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -275,6 +275,26 @@ class User:
                 res = mycursor.fetchone()
                 send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}")
 
+        # произвольное сообщение некоторым пользователям
+        elif command == '/message':
+            if arg == 'confirm' and arg2:
+                text = get_text_from_db('uniq_msg')
+                usernames = [user[1:] for user in arg2.split()] + [None] * (5 - len(arg2.split()))
+                mycursor.execute("SELECT id FROM users WHERE username IN (%s, %s, %s, %s, %s)", usernames)
+                id_for_msg = [user[0] for user in mycursor.fetchall()]
+                diff = len(arg2.split())-len(id_for_msg)
+                if diff == 0:
+                    for id in id_for_msg:
+                        try:
+                            send_message(id, text)
+                        except:
+                            send_message(self.id, f'Error {id}')
+                else:
+                    send_message(self.id, f'NameError: {diff} пользователя не найдено!')
+            else:
+                text = get_text_from_db('uniq_msg')
+                send_message(self.id, text)
+
         # ban пользователя
         elif command == '/ban':
             if arg:
@@ -343,13 +363,15 @@ class User:
 
         elif command == '/update':
             if arg == 'confirm':
-                mycursor.execute("SELECT id FROM users")
+                mycursor.execute("SELECT id FROM users ORDER BY num")
                 names = mycursor.fetchall()
                 user_id_list = [name[0] for name in names]
-                mycursor.execute("SELECT text FROM msgs WHERE name = 'update'")
-                text = mycursor.fetchone()[0]
+                text = get_text_from_db('update')
                 for id in user_id_list:
-                    send_message(id, text)
+                    try:
+                        send_message(id, text)
+                    except:
+                        send_message(self.id, f'Error {id}')
             else:
                 mycursor.execute("SELECT text FROM msgs WHERE name = 'update'")
                 text = mycursor.fetchone()[0]
@@ -368,8 +390,8 @@ class User:
         duration = round(audio['duration'])
         if audio['file_size'] > cred['maxsize']:
             send_message(self.id,
-                         f'''Мы не работаем с файлами больше {round(cred['maxsize']/10**6)} Мб.  
-                         <b>Выберите файл поменьше!</b>''')
+                             f"Мы не работаем с файлами больше {round(cred['maxsize']/10**6, 1)} Мб." +
+                             "\n<b>Выберите файл поменьше!</b>")
             return None
         if self.balance < 10:
             send_message(self.id,
@@ -452,8 +474,8 @@ class User:
                                          (f0, f1, self.id))
                         mydb.commit()
                         send_message(self.id,
-                                     '''Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>  
-                                        Пример: "5.2" - с 5.2 секунды.  
+                                     '''Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>
+                                        Пример: "5.2" - с 5.2 секунды.
                                         <i>Указывай время с начала уже обрезанной песни!</i>''',
                                         'reply_markup', json.dumps(startbass_markup))
                     # не хватает секунд
@@ -559,7 +581,7 @@ class User:
         # проверка правильности запроса
         elif self.status == "wait_correct_data":
             if self.text == 'Всё верно!':
-                send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15 секунд')
+                send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
                 # получаем id сообщения (стикер с думающим утёнком)
                 req_id = send_sticker(self.id, 'loading')
                 file = get_file(self.id)
