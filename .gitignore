@@ -228,3 +228,6 @@ $RECYCLE.BIN/
 
 # AWS sam
 .aws-sam/*
+
+# sam config
+samconfig.toml
