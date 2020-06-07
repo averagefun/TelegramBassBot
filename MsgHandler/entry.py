@@ -87,7 +87,6 @@ class User:
                     wait_cut: бот ожидает ввод обрезки файла,
                     wait_bass_start: бот ожидает ввода начала басса,
                     wait_bass_level: бот ожидает ввод уровня басса,
-                    wait_correct_data: бот ожидает подтверждения правильности введённых данных
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
@@ -216,6 +215,7 @@ class User:
             for item in commands_list.items():
                 text += ', '.join(item[1]) + '| '
                 if item[0] == role:
+                    break
             send_message(self.id, text)
             return None
 
@@ -563,64 +563,23 @@ class User:
                              'reply_markup', json.dumps(bass_markup))
                 return None
 
-            mycursor.execute('SELECT * FROM bass_requests WHERE id = %s', (self.id,))
-            # получаем весь запрос: duration, start_, end_, start_bass, bass_level
-            req = list(mycursor.fetchone()[2:8])
-
-            # ф-ия обработки значений req
-            def conv(req):
-                # обрезка трека
-                if (not req[1]) and (not req[2]):
-                    req[1] = 'Нет'
-                    req.pop(2)
-                else:
-                    req[1] = f'с {req[1]} по {req.pop(2)} сек'
-
-                # начало басса
-                if not req[2]:
-                    req[2] = 'C начала трека'
-                else:
-                    req[2] = f'с {req[2]} сек'
-                return req
-
-            req = conv(req)
-
-            send_message(self.id,
-                         ('Проверьте параметры запроса: \nФайл: <i>{} сек</i>, \nОбрезка: <i>{}</i>,' +
-                          '\nНачало басса: <i>{}</i>, \nУровень баса: <i>{}</i>.').format(
-                                req[0], req[1], req[2], level[req[3]], req[4]), 'reply_markup', json.dumps(final_markup))
-            # обновляем статус
-            mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id,))
+            # посылаем запрос
+            send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
+            # получаем id сообщения (стикер с думающим утёнком)
+            req_id = send_sticker(self.id, 'loading')
+            file = get_file(self.id)
+            # аварийная проверка на размер
+            assert file['result']['file_size'] <= cred['maxsize']
+            file_path = file['result']['file_path']
+            mycursor.execute(
+                f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
+                (req_id, file_path, self.id))
             mydb.commit()
-
-        # проверка правильности запроса
-        elif self.status == "wait_correct_data":
-            if self.text == 'Всё верно!':
-                send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
-                # получаем id сообщения (стикер с думающим утёнком)
-                req_id = send_sticker(self.id, 'loading')
-                file = get_file(self.id)
-                # аварийная проверка на размер
-                assert file['result']['file_size'] <= cred['maxsize']
-                file_path = file['result']['file_path']
-                mycursor.execute(
-                    f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
-                    (req_id, file_path, self.id))
-                mydb.commit()
-                mycursor.execute(
-                    "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
-                    (self.id,))
-                mydb.commit()
-                put_SNS(req_id)
-            elif self.text == 'Отменить запрос':
-                send_message(self.id, 'Запрос отменён! Пришлите файл для нового запроса (mp3, ogg, mp4)')
-                mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
-                mydb.commit()
-                mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
-                mydb.commit()
-            else:
-                send_message(self.id, 'Введите корректный ответ на вопрос!')
-
+            mycursor.execute(
+                "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
+                (self.id,))
+            mydb.commit()
+            put_SNS(req_id)
 
 def get_users(role):
     mycursor.execute("SELECT id FROM users WHERE role_ = %s", (role,))
@@ -882,20 +841,3 @@ def put_SNS(message):
         TargetArn=arn,
         Message=json.dumps(message)
     )
-
-# Future methods
-# def update_dynamoDB(name, value):
-#     global cred
-#     DB = boto3.resource('dynamodb')
-#     table = DB.Table('CredTableTBot')
-#     response = table.update_item(
-#         Key={
-#             'cred_name': name,
-#         },
-#         UpdateExpression="set cred_value=:v",
-#         ExpressionAttributeValues={
-#             ':v': value,
-#         },
-#         ReturnValues="UPDATED_NEW"
-#     )
-#     return response
