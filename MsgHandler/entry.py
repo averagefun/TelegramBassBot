@@ -41,7 +41,7 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 tags = {'audio', 'voice', 'video_note', 'video'}
 
 # все используемые клавиатуры
-products = {"inline_keyboard": [[{"text": "Купить Middle", 'callback_data': 'buy_middle'}]]}
+products = {"inline_keyboard": [[{"text": "Купить unlimited", 'callback_data': 'buy_unlimited'}]]}
 pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
 pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
                                                [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
@@ -55,7 +55,7 @@ bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'on
                'resize_keyboard': True}
 final_markup = {'keyboard': [['Всё верно!'], ['Отменить запрос']], 'one_time_keyboard': True, 'resize_keyboard': True}
 
-# seniors
+# admins
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 
 
@@ -72,6 +72,13 @@ class User:
             self.role, self.balance, self.status, self.total = self.new_user()[2:6]
         else:
             self.role, self.balance, self.status, self.total = self.user_info[4:8]
+
+            # проверяем, закончилась ли роль
+            update_role = '''UPDATE users
+                          SET role_ = 'standart',
+                          role_end = NULL
+                          WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
+            mycursor.execute(update_role)
 
         '''  SQL
                 status_:
@@ -90,14 +97,14 @@ class User:
         self.d_bal, self.max_to_add, self.max_sec, self.role_active = mycursor.fetchone()
 
     def new_user(self):
-        user_info = [self.id, self.username, "junior", 150, "start", 0]
-        # init seniors
+        user_info = [self.id, self.username, "start", 200, "start", 0]
+        # init admins
         if self.id == creator['id']:
-            user_info[2:4] = 'senior', 300
+            user_info[2:4] = 'admin', 1000
             send_message(self.id, 'Привет! Создатель!')
         mycursor.execute(
             f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUE
-                (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s)''', user_info)
+                (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s''', user_info)
         mydb.commit()
         return user_info
 
@@ -111,9 +118,9 @@ class User:
 
     def commands(self):
         # команды по ролям
-        commands_list = {'junior': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
-                         'middle': [],
-                         'senior': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
+        commands_list = {'standart': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
+                         'unlimited': [],
+                         'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -132,8 +139,9 @@ class User:
             send_message(self.id, 'Введите второй аргумент с новой строки!')
             return None
 
-        # junior
-        if command not in commands_list['junior'] and self.role == 'junior':
+        # standart
+        role = self.role.replace('start', 'standart').replace('_unlimited', '')
+        if command not in commands_list['standart'] and role == 'standart':
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
             return None
 
@@ -174,9 +182,9 @@ class User:
             values = [role[1:] for role in roles]  # d_bal, max_to_add, max_sec, role_active
             r = dict(zip(keys, values))
 
-            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['middle'][0], 'max_to_add_mid': r['middle'][1],
-                          'max_sec_mid': r['middle'][2], 'd_bal_jun': r['junior'][0], 'max_to_add_jun': r['junior'][1],
-                          'max_sec_jun': r['junior'][2]}
+            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['unlimited'][0], 'max_to_add_mid': r['unlimited'][1],
+                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standart'][0], 'max_to_add_jun': r['standart'][1],
+                          'max_sec_jun': r['standart'][2]}
 
             if command == '/pay':
                 param = {'rate': p['rate']}
@@ -192,28 +200,32 @@ class User:
                 return None
 
         elif command == '/stats':
-            param = {'balance': self.balance, 'role': self.role, 'd_bal': self.d_bal,
+            if self.role in ('unlimited', 'start_unlimited'):
+                bal = str(self.balance) + '(не тратятся)'
+            else:
+                bal = self.balance
+            param = {'balance': bal, 'role': self.role, 'd_bal': self.d_bal,
                      'max_sec': self.max_sec, 'max_to_add': self.max_to_add, 'total': self.total}
             text = get_text_from_db('stats', param)
             send_message(self.id, text)
             return None
 
         elif command == '/commands':
+            role = self.role.replace('start', 'standart').replace('_unlimited', '')
             text = 'Доступные команды:\n'
             for item in commands_list.items():
                 text += ', '.join(item[1]) + '| '
-                if item[0] == self.role:
-                    break
+                if item[0] == role:
             send_message(self.id, text)
             return None
 
-        # middle
-        if command not in commands_list['middle'] and self.role == 'middle':
+        # unlimited
+        if command not in commands_list['unlimited'] and self.role == 'unlimited':
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
             return None
 
-        # senior
-        if command not in commands_list['senior'] and self.role == 'senior':
+        # admin
+        if command not in commands_list['admin'] and self.role == 'admin':
             send_message(self.id, 'Такой команды не существует!')
             return None
 
@@ -239,7 +251,7 @@ class User:
                 if not arg.isdigit():
                     send_message(self.id, 'Неверный аргумент (укажите 0 или 1)')
                     return None
-                mycursor.execute("UPDATE roles SET role_active = %s WHERE name != 'senior'",
+                mycursor.execute("UPDATE roles SET role_active = %s WHERE name != 'admin'",
                                  (int(arg),))
                 mydb.commit()
                 send_message(self.id, f'Активность всех пользователей = {arg}')
@@ -252,11 +264,11 @@ class User:
             if arg in param:
                 req = f"SELECT {param[arg]} FROM users"
                 if arg2 == 'all_active':
-                    req += " WHERE last_query IS NOT NULL"
+                    req += " WHERE adminuery IS NOT NULL"
                 elif arg2 == 'today':
                     req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR)"
                 elif arg2 == 'today_active':
-                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) and last_query IS NOT NULL"
+                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) and adminuery IS NOT NULL"
 
                 mycursor.execute(req)
                 res = mycursor.fetchall()
@@ -318,7 +330,7 @@ class User:
 
         elif command == '/unban':
             if arg:
-                mycursor.execute("UPDATE users SET role_ = 'junior' WHERE username = %s",
+                mycursor.execute("UPDATE users SET role_ = 'standart' WHERE username = %s",
                                  (arg[1:],))
                 mydb.commit()
                 send_message(self.id, f'Пользователь {arg} разбанен!')
@@ -359,7 +371,7 @@ class User:
                     value_param = mycursor.fetchone()[0]
                     send_message_not_parse(self.id, value_param)
             else:
-                send_message(self.id, 'Доступны следующие товара: ' + ', '.join(params))
+                send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
 
         elif command == '/update':
             if arg == 'confirm':
@@ -404,14 +416,17 @@ class User:
                         'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
                         '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
                         'reply_markup', json.dumps(cut_markup))
-
+        # send_message(self.id,
+        #                 'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
+        #                 '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
+        #                 'reply_markup', json.dumps(cut_markup))
         # начинаем формировать запрос
         mycursor.execute("INSERT INTO bass_requests (id, file_id, duration) VALUES (%s, %s, %s)", (
             self.id, audio['file_id'], duration))
         mydb.commit()
 
         # обновляем статус
-        mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
+        mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
         mydb.commit()
 
     def msg(self):
@@ -689,23 +704,23 @@ class InlineButton:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
             now = datetime.datetime.now()
-            if self.data == 'buy_middle':
+            if self.data == 'buy_unlimited':
                 mycursor.execute("SELECT role_ FROM users WHERE id = %s", (self.user_id,))
                 role = mycursor.fetchone()[0]
-                if role == 'middle':
+                if role == 'unlimited':
                     self.answer_query('Вы уже купили данный товар!', show_alert=True)
                     return None
                 mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'price_mid'")
                 price = mycursor.fetchone()[0]
                 if balance >= price:
                     mycursor.execute(
-                        "UPDATE users SET balance = balance - %s, role_ = 'middle', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
+                        "UPDATE users SET balance = balance - %s, role_ = 'unlimited', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
                         (price, self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
                     delta = datetime.timedelta(days=30, hours=3)
                     role_end = (now + delta).date().strftime("%Y-%m-%d 23:59")
-                    send_message(self.user_id, f"Вы успешно приобрели подписку middle до {role_end} по МСК.")
+                    send_message(self.user_id, f"Вы успешно приобрели подписку unlimited до {role_end} по МСК.")
 
                 else:
                     self.answer_query("Недостаточно средств на балансе!", show_alert=True)
@@ -807,13 +822,13 @@ def get_text_from_db(tag, param=None):
             try:
                 text = text.format(**param)
             except:
-                seniors = get_users('senior')
-                for senior in seniors:
-                    send_message(senior, f'!!! <b>ERROR</b> Error with format {tag}!')
+                admins = get_users('admin')
+                for admin in admins:
+                    send_message(admin, f'!!! <b>ERROR</b> Error with format {tag}!')
         return text
-    seniors = get_users('senior')
-    for senior in seniors:
-        send_message(senior, f'!!! <b>ERROR</b> Error {tag} not found!')
+    admins = get_users('admin')
+    for admin in admins:
+        send_message(admin, f'!!! <b>ERROR</b> Error {tag} not found!')
 
 
 def send_sticker(chat_id, sticker):
@@ -828,9 +843,9 @@ def send_sticker(chat_id, sticker):
             pass
 
     # если ошибка
-    seniors = get_users('senior')
-    for senior in seniors:
-        send_message(senior, f'!!! <b>ERROR</b> Sticker {sticker} not found!')
+    admins = get_users('admin')
+    for admin in admins:
+        send_message(admin, f'!!! <b>ERROR</b> Sticker {sticker} not found!')
     return round(time.time())
 
 

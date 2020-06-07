@@ -89,8 +89,8 @@ def lambda_handler(event, context):
     # преобразование файла >> сохрание в tmp под форматом mp3
     filename2 = f'{chat_id}_{time_}.mp3'
     with open(f'/tmp/{filename2}', 'wb') as file:
-        main_audio(filename1, chat_id, format_, bass_level, duration, start_bass).export(file,
-                                                                                                  format="mp3")
+        combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+        combined.export(file, format="mp3")
 
     # удаляем запрос и меняем статус
     mycursor.execute(f'DELETE FROM bass_requests WHERE id = {chat_id}')
@@ -109,11 +109,10 @@ def lambda_handler(event, context):
         requests.post(url, files=files, data=data)
 
     # сообщение о новом запросе
-    mycursor.execute(f'SELECT balance FROM users WHERE id = {chat_id}')
-    balance = mycursor.fetchall()[0][0]
-    send_message(chat_id,
-                 f'Запрос успешно завершён!\nБаланс: {balance} сек.' +
-                 '\n<i><b>Для нового запроса отправьте файл</b> (mp3, ogg, mp4)</i>')
+    mycursor.execute(f'SELECT balance, role_ FROM users WHERE id = %s', (chat_id, ))
+    balance, role = mycursor.fetchone()
+    # выводим сообщение смотря на роль
+    send_message(chat_id, text)
 
     # удаление ненужных файлов из темпа
     os.remove(f'/tmp/{filename1}')
@@ -127,10 +126,23 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     if dur[1]:
         sample = sample[dur[0] * 1000: dur[1] * 1000]
 
-    # обновляем баланс и тотал
+    # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = len(sample) / 1000
-    mycursor.execute(
-        f'UPDATE users SET balance = balance - {table_dur}, total = total + {table_dur} WHERE id = {chat_id}')
+    if role == 'start':
+        mycursor.execute("""UPDATE users SET balance = 200, total = total + %s role_ = 'start_unlimited',
+                        role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 2 DAY WHERE id = %s""", (table_dur, chat_id))
+        mydb.commit()
+        text = get_text_from_db('after_req_start')
+    elif role == 'start_unlimited':
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        text = get_text_from_db('after_req_start_unlim')
+    elif role = 'unlimited':
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        text = get_text_from_db('after_req_unlim')
+    else:
+        text = get_text_from_db('after_req_other')
+        mycursor.execute(
+            f'UPDATE users SET balance = balance - %s, total = total + %s WHERE id = %s', (table_dur, table_dur, chat_id))
     mydb.commit()
 
     # начало баса
@@ -144,7 +156,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     if start_b:
         combined = start_ + combined
 
-    return combined
+    return combined, text
 
 
 def bass_line_freq(track, bass):
@@ -179,3 +191,15 @@ def connect_db():
     )
     mycursor = mydb.cursor()
     return mycursor, mydb
+
+def get_text_from_db(tag, param=None):
+    mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag,))
+    text = mycursor.fetchone()[0]
+    if text:
+        if param:
+            try:
+                text = text.format(**param)
+            except:
+                return None
+        return text
+    admins = get_users('admin')
