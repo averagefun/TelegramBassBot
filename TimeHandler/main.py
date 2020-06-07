@@ -30,17 +30,10 @@ def lambda_handler(event, context):
 
     print(event)
 
-    # получение максимального количества секунд, когда работает автопополнение
-    mycursor.execute("SELECT * FROM roles")
-    roles = mycursor.fetchall()
-    keys = [role[0] for role in roles]
-    values = [role[1:] for role in roles]  # d_bal, max_to_add, maxsize, role_active
-    r = dict(zip(keys, values))
-
     # обновляем таблицу
     mycursor.execute(update_role())
     mydb.commit()
-    mycursor.execute(update_bal(r))
+    mycursor.execute(update_bal())
     mydb.commit()
 
 
@@ -57,38 +50,18 @@ def connect_db():
     return mycursor, mydb
 
 
-def update_bal(r):
-    return f'''UPDATE users
-                SET balance = CASE
-                    WHEN role_ = 'senior' THEN CASE
-                        WHEN balance >= {r['senior'][1]} THEN 
-                            balance
-                        WHEN balance < ({r['senior'][1]} - {r['senior'][0]}) THEN
-                            balance + {r['senior'][0]}
-                        ELSE {r['senior'][1]}
-                        end
-                    WHEN role_ = 'middle' THEN CASE
-                        WHEN balance >= {r['middle'][1]} THEN 
-                            balance
-                        WHEN balance < ({r['middle'][1]} - {r['middle'][0]}) THEN
-                            balance + {r['middle'][0]}
-                        ELSE {r['middle'][1]}
-                        end
-                    WHEN role_ = 'junior' THEN CASE
-                        WHEN balance >= {r['junior'][1]} THEN 
-                            balance
-                        WHEN balance < ({r['junior'][1]} - {r['junior'][0]}) THEN
-                            balance + {r['junior'][0]}
-                        ELSE {r['junior'][1]}
-                        end
-                    ELSE
-                        balance
-                    end
-                '''
+def update_bal():
+    return '''UPDATE users
+               SET balance =
+               IF (balance >= (SELECT max_to_add FROM roles WHERE roles.name = users.role_), balance,
+                    IF (balance < ((SELECT max_to_add FROM roles WHERE roles.name = users.role_) -
+                                    (SELECT d_bal FROM roles WHERE roles.name = users.role_)),
+                                        balance + (SELECT d_bal FROM roles WHERE roles.name = users.role_),
+                                            (SELECT max_to_add FROM roles WHERE roles.name = users.role_)))'''
 
 
 def update_role():
-    return f'''UPDATE users
-                  SET role_ = 'junior',
-                  role_end = NULL 
+    return '''UPDATE users
+                  SET role_ = 'standart',
+                  role_end = NULL
                   WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
