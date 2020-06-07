@@ -10,7 +10,7 @@ import mysql.connector
 
 
 # uncomment this if run locally
-# import use_proxy
+import use_proxy
 
 # Get cred
 def get_cred():
@@ -279,8 +279,8 @@ class User:
         elif command == '/message':
             if arg == 'confirm' and arg2:
                 text = get_text_from_db('uniq_msg')
-                usernames = [user[1:] for user in arg2.split()] + [None] * (5 - len(arg2.split()))
-                mycursor.execute("SELECT id FROM users WHERE username IN (%s, %s, %s, %s, %s)", usernames)
+                usernames = "', '".join(user[1:] for user in arg2.split())
+                mycursor.execute(f"SELECT id FROM users WHERE username in ('{usernames}')")
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
                 diff = len(arg2.split())-len(id_for_msg)
                 if diff == 0:
