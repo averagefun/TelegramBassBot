@@ -53,11 +53,8 @@ def connect_db():
 def update_bal():
     return '''UPDATE users
                SET balance =
-               IF (balance >= (SELECT max_to_add FROM roles WHERE roles.name = users.role_), balance,
-                    IF (balance < ((SELECT max_to_add FROM roles WHERE roles.name = users.role_) -
-                                    (SELECT d_bal FROM roles WHERE roles.name = users.role_)),
-                                        balance + (SELECT d_bal FROM roles WHERE roles.name = users.role_),
-                                            (SELECT max_to_add FROM roles WHERE roles.name = users.role_)))'''
+               IF (balance >= (SELECT d_bal FROM roles WHERE roles.name = users.role_), balance,
+                    (SELECT d_bal FROM roles WHERE roles.name = users.role_)'''
 
 
 def update_role():
