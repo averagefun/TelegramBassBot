@@ -7,6 +7,7 @@ import boto3
 import time
 import requests
 import mysql.connector
+import random
 
 # Get cred
 def get_cred():
@@ -108,9 +109,6 @@ def lambda_handler(event, context):
         data = {'chat_id': chat_id, 'title': f'{req_id}_bass'}
         requests.post(url, files=files, data=data)
 
-    # сообщение о новом запросе
-    mycursor.execute(f'SELECT balance, role_ FROM users WHERE id = %s', (chat_id, ))
-    balance, role = mycursor.fetchone()
     # выводим сообщение смотря на роль
     send_message(chat_id, text)
 
@@ -128,19 +126,24 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
 
     # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = len(sample) / 1000
+    mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
+    role = mycursor.fetchone()[0]
     if role == 'start':
-        mycursor.execute("""UPDATE users SET balance = 200, total = total + %s role_ = 'start_unlimited',
+        mycursor.execute("""UPDATE users SET balance = 200, total = total + %s, role_ = 'start_unlimited',
                         role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 2 DAY WHERE id = %s""", (table_dur, chat_id))
         mydb.commit()
         text = get_text_from_db('after_req_start')
     elif role == 'start_unlimited':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         text = get_text_from_db('after_req_start_unlim')
-    elif role = 'unlimited':
+        if random.random() <= 0.3:
+            text += '\n\n'
+            text += get_text_from_db('referral')
+    elif role == 'unlimited':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         text = get_text_from_db('after_req_unlim')
     else:
-        text = get_text_from_db('after_req_other')
+        text = get_text_from_db('after_req_default')
         mycursor.execute(
             f'UPDATE users SET balance = balance - %s, total = total + %s WHERE id = %s', (table_dur, table_dur, chat_id))
     mydb.commit()
@@ -178,6 +181,7 @@ def delete_message(chat_id, message_id):
 def send_message(chat_id, text):
     url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
     requests.get(url)
+
 
 # AWS methods
 # подключение к бд

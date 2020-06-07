@@ -10,7 +10,7 @@ import mysql.connector
 
 
 # uncomment this if run locally
-import use_proxy
+# import use_proxy
 
 # Get cred
 def get_cred():
@@ -75,7 +75,7 @@ class User:
 
             # проверяем, закончилась ли роль
             update_role = '''UPDATE users
-                          SET role_ = 'standart',
+                          SET role_ = 'standard',
                           role_end = NULL
                           WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
             mycursor.execute(update_role)
@@ -90,7 +90,6 @@ class User:
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
-
         # get d_bal and maxsize
         mycursor.execute("SELECT d_bal, max_to_add, max_sec, role_active FROM roles WHERE name = %s", (self.role,))
         self.d_bal, self.max_to_add, self.max_sec, self.role_active = mycursor.fetchone()
@@ -102,8 +101,8 @@ class User:
             user_info[2:4] = 'admin', 1000
             send_message(self.id, 'Привет! Создатель!')
         mycursor.execute(
-            f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUE
-                (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s''', user_info)
+            f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUES
+                (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s)''', user_info)
         mydb.commit()
         return user_info
 
@@ -117,7 +116,7 @@ class User:
 
     def commands(self):
         # команды по ролям
-        commands_list = {'standart': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
+        commands_list = {'standard': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
                          'unlimited': [],
                          'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
@@ -138,9 +137,9 @@ class User:
             send_message(self.id, 'Введите второй аргумент с новой строки!')
             return None
 
-        # standart
-        role = self.role.replace('start', 'standart').replace('_unlimited', '')
-        if command not in commands_list['standart'] and role == 'standart':
+        # standard
+        role = self.role.replace('start', 'standard').replace('_unlimited', '')
+        if command not in commands_list['standard'] and role == 'standard':
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
             return None
 
@@ -182,8 +181,8 @@ class User:
             r = dict(zip(keys, values))
 
             param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['unlimited'][0], 'max_to_add_mid': r['unlimited'][1],
-                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standart'][0], 'max_to_add_jun': r['standart'][1],
-                          'max_sec_jun': r['standart'][2]}
+                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standard'][0], 'max_to_add_jun': r['standard'][1],
+                          'max_sec_jun': r['standard'][2]}
 
             if command == '/pay':
                 param = {'rate': p['rate']}
@@ -210,7 +209,7 @@ class User:
             return None
 
         elif command == '/commands':
-            role = self.role.replace('start', 'standart').replace('_unlimited', '')
+            role = self.role.replace('start', 'standard').replace('_unlimited', '')
             text = 'Доступные команды:\n'
             for item in commands_list.items():
                 text += ', '.join(item[1]) + '| '
@@ -330,7 +329,7 @@ class User:
 
         elif command == '/unban':
             if arg:
-                mycursor.execute("UPDATE users SET role_ = 'standart' WHERE username = %s",
+                mycursor.execute("UPDATE users SET role_ = 'standard' WHERE username = %s",
                                  (arg[1:],))
                 mydb.commit()
                 send_message(self.id, f'Пользователь {arg} разбанен!')
@@ -389,7 +388,7 @@ class User:
                 text = mycursor.fetchone()[0]
                 send_message(self.id, text)
 
-    def file(self, tag):
+    def file(self, tag, message):
         # проверка на статус юзера
         if self.status != "wait_file":
             send_message(self.id,
@@ -412,22 +411,56 @@ class User:
                          '\n(/help - как пополнить баланс)')
             return None
 
-        send_message(self.id,
-                        'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
-                        '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
-                        'reply_markup', json.dumps(cut_markup))
-        # send_message(self.id,
-        #                 'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
-        #                 '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
-        #                 'reply_markup', json.dumps(cut_markup))
+        # удаляем все предыдущие запросы во избежании багов
+        mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
+        mydb.commit()
+
         # начинаем формировать запрос
         mycursor.execute("INSERT INTO bass_requests (id, file_id, duration) VALUES (%s, %s, %s)", (
             self.id, audio['file_id'], duration))
         mydb.commit()
 
+        if 'caption' in message:
+            caption = message['caption']
+            if caption.isdigit():
+                if int(caption) in [1, 2, 3, 4]:
+                    mycursor.execute("UPDATE bass_requests SET bass_level = %s", (int(caption) - 1, ))
+                    mydb.commit()
+                    self.send_req_to_bass()
+                    return None
+                else:
+                    send_message(chat_id, "Описание не распознано.\nВ следующий раз указывайте уровень баса от 0 до 4!")
+            else:
+                send_message(chat_id,
+                             "Описание не распознано.\nВ следующий раз указывайте уровень баса <b>цифрой</b> от 0 до 4!")
+
+        send_message(self.id,
+                     'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
+                     '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
+                     'reply_markup', json.dumps(cut_markup))
+
         # обновляем статус
-        mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
+        mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
         mydb.commit()
+
+    def send_req_to_bass(self):
+        # посылаем запрос
+        send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
+        # получаем id сообщения (стикер с думающим утёнком)
+        req_id = send_sticker(self.id, 'loading')
+        file = get_file(self.id)
+        # аварийная проверка на размер
+        assert file['result']['file_size'] <= cred['maxsize']
+        file_path = file['result']['file_path']
+        mycursor.execute(
+            f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
+            (req_id, file_path, self.id))
+        mydb.commit()
+        mycursor.execute(
+            "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
+            (self.id,))
+        mydb.commit()
+        put_SNS(req_id)
 
     def msg(self):
         # пытаемся распознать текст, иначе понимаем что юзер скинул неизвестный документ
@@ -469,7 +502,7 @@ class User:
                                      (0, cut, self.id))
                     mydb.commit()
                 send_message(self.id,
-                             'Теперь укажи, с какой секунды начинается бас.\nПример "5.2" - с 5.2 секунды.',
+                             'Теперь укажи, с какой секунды начинать усиливать бас.\nПример "5.2" - с 5.2 секунды.',
                              'reply_markup', json.dumps(startbass_markup))
             else:
                 s = self.text.split()
@@ -563,23 +596,7 @@ class User:
                              'reply_markup', json.dumps(bass_markup))
                 return None
 
-            # посылаем запрос
-            send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
-            # получаем id сообщения (стикер с думающим утёнком)
-            req_id = send_sticker(self.id, 'loading')
-            file = get_file(self.id)
-            # аварийная проверка на размер
-            assert file['result']['file_size'] <= cred['maxsize']
-            file_path = file['result']['file_path']
-            mycursor.execute(
-                f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE id = %s",
-                (req_id, file_path, self.id))
-            mydb.commit()
-            mycursor.execute(
-                "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
-                (self.id,))
-            mydb.commit()
-            put_SNS(req_id)
+            self.send_req_to_bass()
 
 def get_users(role):
     mycursor.execute("SELECT id FROM users WHERE role_ = %s", (role,))
@@ -733,7 +750,7 @@ def lambda_handler(event, context):
 
     # юзер залил файл
     if c:
-        user.file(c[0])
+        user.file(c[0], event['message'])
 
     # Юзер написал текст
     else:
