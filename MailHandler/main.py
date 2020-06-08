@@ -38,7 +38,7 @@ def lambda_handler(event, context):
         message = event['Records'][0]['Sns']['Message']
         # рассылка всем пользователям
         if json.loads(message) == 'update':
-            mycursor.execute("SELECT id FROM users_test ORDER BY num")
+            mycursor.execute("SELECT id FROM users ORDER BY num")
             ids = mycursor.fetchall()
             user_id_list = [chat_id[0] for chat_id in ids]
             text = get_text_from_db('update')

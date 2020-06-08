@@ -79,12 +79,12 @@ Resources:
               Topic:
                 Ref: BassBoostTrigger
 
-  TimeHandler:
+  MailHandler:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: TimeHandlerTBot
-      Description: "Update users balance every day at midnight UTC +3"
-      CodeUri: TimeHandler/
+      FunctionName: MailHandlerTBot
+      Description: "Update users balance every day at midnight"
+      CodeUri: MailHandler/
       Handler: main.lambda_handler
       Timeout: 30
       Runtime: python3.7
@@ -96,10 +96,6 @@ Resources:
             TableName:
               Ref: CredTableTBot
       Events:
-        TimeEvent:
-          Type: Schedule
-          Properties:
-            Schedule: "cron(10 21 * * ? *)"
         Mailing:
           Type: SNS
           Properties:
