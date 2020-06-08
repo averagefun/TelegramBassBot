@@ -327,10 +327,11 @@ class User:
                 mycursor.execute(f"SELECT id FROM users WHERE username in ('{usernames}')")
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
                 diff = len(arg2.split())-len(id_for_msg)
-                if diff == 0:
+                if diff <= 0:
                     for chat_id in id_for_msg:
                         send_message(chat_id, text)
                         time.sleep(0.05)
+                    send_message(self.id, "Все сообщения успешно отправлены!")
                 else:
                     send_message(self.id, f'NameError: {diff} пользователя не найдено!')
             else:
