@@ -18,23 +18,9 @@ role_end TIMESTAMP);
 CREATE TABLE roles (
 name VARCHAR(127) NOT NULL UNIQUE,
 d_bal SMALLINT NOT NULL,
-max_to_add SMALLINT NOT NULL,
 max_sec SMALLINT NOT NULL,
 role_active BIT NOT NULL);
-INSERT INTO roles VALUES ('junior', 40, 100, 100, 1);
-INSERT INTO roles VALUES ('middle', 100, 210, 150, 1);
-INSERT INTO roles VALUES ('senior', 150, 350, 320, 1);
-select * from roles;
-
-CREATE TABLE roles (
-name VARCHAR(127) NOT NULL UNIQUE,
-d_bal SMALLINT NOT NULL,
-max_to_add SMALLINT NOT NULL,
-maxsize INT NOT NULL,
-role_active BIT NOT NULL);
-INSERT INTO roles VALUES ('junior', 30, 60, 1000000, 1);
-INSERT INTO roles VALUES ('middle', 80, 200, 2000000, 1);
-INSERT INTO roles VALUES ('senior', 150, 350, 3500000, 1);
+# admin, standard, start, start_unlimited and unlimited roles
 select * from roles;
 
 # bass_requests table
