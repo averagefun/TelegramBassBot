@@ -20,7 +20,10 @@ name VARCHAR(127) NOT NULL UNIQUE,
 d_bal SMALLINT NOT NULL,
 max_sec SMALLINT NOT NULL,
 role_active BIT NOT NULL);
-# admin, standard, start, start_unlimited and unlimited roles
+INSERT INTO roles(name, max_sec) VALUES ('admin', 350);
+INSERT INTO roles(name, max_sec) VALUES ('premium', 300);
+INSERT INTO roles(name, max_sec) VALUES ('standart', 125);
+INSERT INTO roles(name, max_sec) VALUES ('start', 210);
 select * from roles;
 
 # bass_requests table
@@ -58,6 +61,8 @@ CREATE TABLE payment_param(
 name_param VARCHAR(255) NOT NULL UNIQUE,
 value_param INT NOT NULL);
 desc payment_param;
-INSERT INTO payment_param VALUES ('rate', 20);
-INSERT INTO payment_param VALUES ('price_mid', 300);
+INSERT INTO payment_param VALUES ('ref_bonus', 2);
+INSERT INTO payment_param VALUES ('premium_day', 2);
+INSERT INTO payment_param VALUES ('premium_week', 12);
+INSERT INTO payment_param VALUES ('premium_month', 30);
 select * from payment_param;

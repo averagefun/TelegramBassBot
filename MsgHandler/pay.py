@@ -1,5 +1,4 @@
 import json
-from math import floor
 
 import requests
 import mysql.connector
@@ -36,7 +35,7 @@ def check_payment(pay_id, cred, mycursor, mydb):
     for i in range(len(req)):
         r = req[i]
         if r['comment'] == str(pay_id) and r['type'] == 'IN' and r['sum']['currency'] == 643:
-            ans['sum'] = floor(r['sum']['amount'])
+            ans['sum'] = r['sum']['amount']
             if r['status'] == "SUCCESS":
                 ans['success'] = True
                 mycursor.execute(f"""UPDATE payment_query SET 
