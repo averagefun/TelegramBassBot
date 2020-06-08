@@ -132,18 +132,20 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
         mycursor.execute("""UPDATE users SET balance = 200, total = total + %s, role_ = 'start_unlimited',
                         role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 2 DAY WHERE id = %s""", (table_dur, chat_id))
         mydb.commit()
-        text = get_text_from_db('after_req_start')
+        mycursor.execute("SELECT max_sec FROM roles WHERE name = 'start_unlimited'")
+        text = get_text_from_db('after_req_start', {'max_sec_start_unlim': mycursor.fetchone()[0]})
     elif role == 'start_unlimited':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         text = get_text_from_db('after_req_start_unlim')
         if random.random() <= 0.3:
             text += '\n\n'
             text += get_text_from_db('referral')
-    elif role == 'unlimited':
+    elif role == 'unlimited' or role == 'admin':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         text = get_text_from_db('after_req_unlim')
     else:
-        text = get_text_from_db('after_req_default')
+        mycursor.execute("SELECT balance FROM users WHERE id = %s", (chat_id, ))
+        text = get_text_from_db('after_req_default', {'balance': mycursor.fetchone()[0]})
         mycursor.execute(
             f'UPDATE users SET balance = balance - %s, total = total + %s WHERE id = %s', (table_dur, table_dur, chat_id))
     mydb.commit()

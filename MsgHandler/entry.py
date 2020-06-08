@@ -1,7 +1,6 @@
 import json
 import random
 import time
-import datetime
 
 import pay
 import requests
@@ -41,12 +40,15 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 tags = {'audio', 'voice', 'video_note', 'video'}
 
 # все используемые клавиатуры
-products = {"inline_keyboard": [[{"text": "Купить unlimited", 'callback_data': 'buy_unlimited'}]]}
+products = {"inline_keyboard": [[{"text": "Купить unlimited 24 часа", 'callback_data': 'unlimited_day'}],
+                                [{"text": "Купить unlimited 7 дней", 'callback_data': 'unlimited_week'}],
+                                [{"text": "Купить unlimited 30 дней", 'callback_data': 'unlimited_month'}]]}
 pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
 pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
                                                [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
                                                [{"text": "Удалить платёжную сессию!",
                                                  'callback_data': 'delete_payment'}]]}
+if_edit_markup = {'keyboard': [['Редактировать'], ['Пропустить редактирование']], 'one_time_keyboard': True, 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'one_time_keyboard': True, 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'one_time_keyboard': True,
                     'resize_keyboard': True}
@@ -73,12 +75,17 @@ class User:
         else:
             self.role, self.balance, self.status, self.total = self.user_info[4:8]
 
+            # проверяем на изменённый ник
+            if self.username != self.user_info[2]:
+                mycursor.execute("UPDATE users SET username = %s WHERE id = %s", (self.username, self.id))
+
             # проверяем, закончилась ли роль
             update_role = '''UPDATE users
                           SET role_ = 'standard',
                           role_end = NULL
                           WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
             mycursor.execute(update_role)
+            mydb.commit()
 
         '''  SQL
                 status_:
@@ -90,9 +97,9 @@ class User:
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
-        # get d_bal and maxsize
-        mycursor.execute("SELECT d_bal, max_to_add, max_sec, role_active FROM roles WHERE name = %s", (self.role,))
-        self.d_bal, self.max_to_add, self.max_sec, self.role_active = mycursor.fetchone()
+        # get d_bal and max_sec
+        mycursor.execute("SELECT d_bal, max_sec, role_active FROM roles WHERE name = %s", (self.role,))
+        self.d_bal, self.max_sec, self.role_active = mycursor.fetchone()
 
     def new_user(self):
         user_info = [self.id, self.username, "start", 200, "start", 0]
@@ -116,7 +123,7 @@ class User:
 
     def commands(self):
         # команды по ролям
-        commands_list = {'standard': ['/start', '/help', '/stats', '/stop', '/pay', '/buy', '/commands'],
+        commands_list = {'standard': ['/start', '/help', '/bug', '/stats', '/stop', '/pay', '/buy', '/commands'],
                          'unlimited': [],
                          'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
@@ -145,8 +152,27 @@ class User:
 
         # начальное сообщение-приветствие
         if command == '/start':
+            # проверка на реферальную ссылку
+            if arg and self.role == 'start':
+                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (int(arg), ))
+                res = mycursor.fetchone()
+                if res:
+                    mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
+                    ref_bonus = mycursor.fetchone()[0]
+                    send_message(int(arg),
+                                 "@{} воспользовался вашей реферальной ссылкой!\nВам начислено {} секунд".format(
+                                                                                    self.username, str(ref_bonus)))
+                    mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (ref_bonus, int(arg)))
+                    mydb.commit()
             self.start_msg()
             return None
+
+        # сообщение о баге
+        elif command == '/bug' and arg:
+            send_message(self.id, 'Спасибо, что сообщили о баге!')
+            admins = get_users('admin')
+            for admin in admins:
+                send_message(admin, f'Bug report from @{self.username} ' + arg)
 
         # удаление запроса
         elif command == '/stop':
@@ -158,7 +184,7 @@ class User:
             return None
 
         elif command == '/help':
-            param = {'role': self.role, 'd_bal': self.d_bal, 'max_to_add': self.max_to_add,
+            param = {'role': self.role, 'd_bal': self.d_bal,
                      'maxsize': round(cred['maxsize']/10**6), 'max_sec': self.max_sec}
             text = get_text_from_db('help', param)
             send_message(self.id, text)
@@ -177,11 +203,11 @@ class User:
             mycursor.execute("SELECT * FROM roles")
             roles = mycursor.fetchall()
             keys = [role[0] for role in roles]
-            values = [role[1:] for role in roles]  # d_bal, max_to_add, max_sec, role_active
+            values = [role[1:] for role in roles]  # d_bal, max_sec, role_active
             r = dict(zip(keys, values))
 
-            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['unlimited'][0], 'max_to_add_mid': r['unlimited'][1],
-                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standard'][0], 'max_to_add_jun': r['standard'][1],
+            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['unlimited'][0],
+                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standard'][0],
                           'max_sec_jun': r['standard'][2]}
 
             if command == '/pay':
@@ -198,12 +224,12 @@ class User:
                 return None
 
         elif command == '/stats':
-            if self.role in ('unlimited', 'start_unlimited'):
-                bal = str(self.balance) + '(не тратятся)'
+            if self.role in ('unlimited', 'start_unlimited', 'admin'):
+                bal = f"<b>{self.balance}</b>  сек (не тратятся)"
             else:
-                bal = self.balance
+                bal = f"<b>{self.balance}</b>  сек"
             param = {'balance': bal, 'role': self.role, 'd_bal': self.d_bal,
-                     'max_sec': self.max_sec, 'max_to_add': self.max_to_add, 'total': self.total}
+                     'max_sec': self.max_sec, 'total': self.total}
             text = get_text_from_db('stats', param)
             send_message(self.id, text)
             return None
@@ -424,23 +450,34 @@ class User:
             caption = message['caption']
             if caption.isdigit():
                 if int(caption) in [1, 2, 3, 4]:
+                    # заполняем уровень баса
                     mycursor.execute("UPDATE bass_requests SET bass_level = %s", (int(caption) - 1, ))
                     mydb.commit()
+
+                    # получаем длительность файла
+                    mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
+                    duration = mycursor.fetchone()[0]
+
+                    # выполняем автообрезание
+                    self.auto_cut(duration)
+
                     self.send_req_to_bass()
                     return None
                 else:
-                    send_message(chat_id, "Описание не распознано.\nВ следующий раз указывайте уровень баса от 0 до 4!")
+                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\n от 0 до 4!")
+                    return None
             else:
-                send_message(chat_id,
-                             "Описание не распознано.\nВ следующий раз указывайте уровень баса <b>цифрой</b> от 0 до 4!")
+                send_message(self.id,
+                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\n от 0 до 4!")
+                return None
 
         send_message(self.id,
-                     'Запись получена! <b>Теперь можно обрезать файл (если нужно).</b>' +
-                     '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
-                     'reply_markup', json.dumps(cut_markup))
+                     'Файл принят! <b>Теперь можно отредактировать файл</b>' +
+                     '\n(обрезка и прочее...):',
+                     'reply_markup', json.dumps(if_edit_markup))
 
         # обновляем статус
-        mycursor.execute('UPDATE users SET status_ = "wait_cut" WHERE id = %s', (self.id,))
+        mycursor.execute('UPDATE users SET status_ = "wait_edit" WHERE id = %s', (self.id,))
         mydb.commit()
 
     def send_req_to_bass(self):
@@ -461,6 +498,36 @@ class User:
             (self.id,))
         mydb.commit()
         put_SNS(req_id)
+
+    # автоматическое обрезание песни
+    def auto_cut(self, duration):
+        # проверка для ролей с балансом, если баланс меньше длительности файла
+        if 'unlimited' not in self.role and self.balance < duration:
+            if self.balance < self.max_sec:
+                cut = self.balance
+                send_message(self.id,
+                             '<b>Внимание!</b>\n' +
+                             f'У вас недостаточно секунд на балансе для полной песни, песня будет обрезана до {cut} сек!')
+            else:
+                cut = self.max_sec
+                send_message(self.id,
+                             '<b>Внимание!</b>' +
+                             f'\nВаша роль не позволяет обрабатывать песни более <b>{cut}</b> секунд.' +
+                             f'\nПесня будет обрезана до этого значения!')
+
+        # проверка для безлимитных ролей или если баланс больше длительности файла
+        elif (self.balance > duration or 'unlimited' in self.role) and self.max_sec < duration:
+            cut = self.max_sec
+            send_message(self.id,
+                         '<b>Внимание!</b>' +
+                         f'\nВаша роль не позволяет обрабатывать песни более {cut} секунд.' +
+                         f'\nПесня будет обрезана до этого значения!')
+        else:
+            return None
+
+        mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
+                         (0, cut, self.id))
+        mydb.commit()
 
     def msg(self):
         # пытаемся распознать текст, иначе понимаем что юзер скинул неизвестный документ
@@ -485,6 +552,28 @@ class User:
         elif self.status == "wait_file":
             send_message(self.id, 'Пожалуйста, отправьте <b>файл</b>, а не сообщение!')
 
+        elif self.status == 'wait_edit':
+            if self.text == 'Редактировать':
+                mycursor.execute("UPDATE users SET status_ = 'wait_cut' WHERE id = %s", (self.id, ))
+                mydb.commit()
+                send_message(self.id,
+                             '<b>Сначала укажи границы обрезки файла файл (если нужно).</b>' +
+                             '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
+                             'reply_markup', json.dumps(cut_markup))
+            elif self.text == 'Пропустить редактирование':
+                # получаем длительность файла
+                mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
+                duration = mycursor.fetchone()[0]
+
+                # выполняем автообрезание
+                self.auto_cut(duration)
+
+                mycursor.execute("UPDATE users SET status_ = 'wait_bass_level' WHERE id = %s", (self.id,))
+                mydb.commit()
+                send_message(self.id, '<b>Выбери уровень баса:</b>', 'reply_markup', json.dumps(bass_markup))
+            else:
+                send_message(self.id, 'Нажмите одну из кнопок на клавиатуре!')
+
         # обрезка файла
         elif self.status == "wait_cut":
             # находим длительность файла
@@ -492,15 +581,10 @@ class User:
             duration = mycursor.fetchone()[0]
 
             if self.text == 'Обрезать не нужно':
-                # проверка на длительность
-                if self.balance < duration:
-                    cut = self.balance if self.balance < self.max_sec else self.max_sec
-                    send_message(self.id,
-                                 '<b>Внимание!</b>\n' +
-                                 f'У вас недостаточно секунд для полной песни, песня будет обрезана до {cut} сек!')
-                    mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
-                                     (0, cut, self.id))
-                    mydb.commit()
+
+                # автообрезание
+                self.auto_cut(duration)
+
                 send_message(self.id,
                              'Теперь укажи, с какой секунды начинать усиливать бас.\nПример "5.2" - с 5.2 секунды.',
                              'reply_markup', json.dumps(startbass_markup))
@@ -522,10 +606,9 @@ class User:
                                          (f0, f1, self.id))
                         mydb.commit()
                         send_message(self.id,
-                                     '''Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>
-                                        Пример: "5.2" - с 5.2 секунды.
-                                        <i>Указывай время с начала уже обрезанной песни!</i>''',
-                                        'reply_markup', json.dumps(startbass_markup))
+                                     'Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>' +
+                                      '\nПример: "5.2" - с 5.2 секунды.\n<i>Указывай время с начала уже обрезанной песни!</i>',
+                                      'reply_markup', json.dumps(startbass_markup))
                     # не хватает секунд
                     else:
                         send_message(self.id,
@@ -679,24 +762,21 @@ class InlineButton:
         else:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
-            now = datetime.datetime.now()
-            if self.data == 'buy_unlimited':
-                mycursor.execute("SELECT role_ FROM users WHERE id = %s", (self.user_id,))
-                role = mycursor.fetchone()[0]
-                if role == 'unlimited':
-                    self.answer_query('Вы уже купили данный товар!', show_alert=True)
-                    return None
-                mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'price_mid'")
+            unlim_prod = {'unlimited_day': 1,'unlimited_week': 7, 'unlimited_month': 30}
+            if self.data in unlim_prod:
+                mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
                 price = mycursor.fetchone()[0]
                 if balance >= price:
                     mycursor.execute(
-                        "UPDATE users SET balance = balance - %s, role_ = 'unlimited', role_end = NOW() + INTERVAL 3 HOUR + INTERVAL 30 DAY WHERE id = %s",
-                        (price, self.user_id))
+                        """UPDATE users SET balance = balance - %s, role_ = 'unlimited',
+                        role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
+                        WHERE id = %s""",
+                        (price, unlim_prod[data], unlim_prod[data], self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
-                    delta = datetime.timedelta(days=30, hours=3)
-                    role_end = (now + delta).date().strftime("%Y-%m-%d 23:59")
-                    send_message(self.user_id, f"Вы успешно приобрели подписку unlimited до {role_end} по МСК.")
+                    mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
+                    send_message(self.user_id,
+                                 f"Вы успешно приобрели подписку unlimited до {mycursor.fetchone()[0]} по МСК.")
 
                 else:
                     self.answer_query("Недостаточно средств на балансе!", show_alert=True)
