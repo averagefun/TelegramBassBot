@@ -54,11 +54,11 @@ def update_bal():
     return '''UPDATE users
                SET balance =
                IF (balance >= (SELECT d_bal FROM roles WHERE roles.name = users.role_), balance,
-                    (SELECT d_bal FROM roles WHERE roles.name = users.role_)'''
+                    (SELECT d_bal FROM roles WHERE roles.name = users.role_))'''
 
 
 def update_role():
     return '''UPDATE users
-                  SET role_ = 'standart',
+                  SET role_ = 'standard',
                   role_end = NULL
                   WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''

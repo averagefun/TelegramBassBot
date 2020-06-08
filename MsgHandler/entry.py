@@ -40,9 +40,9 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 tags = {'audio', 'voice', 'video_note', 'video'}
 
 # все используемые клавиатуры
-products = {"inline_keyboard": [[{"text": "Купить unlimited 24 часа", 'callback_data': 'unlimited_day'}],
-                                [{"text": "Купить unlimited 7 дней", 'callback_data': 'unlimited_week'}],
-                                [{"text": "Купить unlimited 30 дней", 'callback_data': 'unlimited_month'}]]}
+products = {"inline_keyboard": [[{"text": "Купить unlimited (24 часа)", 'callback_data': 'unlimited_day'}],
+                                [{"text": "Купить unlimited (7 дней)", 'callback_data': 'unlimited_week'}],
+                                [{"text": "Купить unlimited (30 дней)", 'callback_data': 'unlimited_month'}]]}
 pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
 pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
                                                [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
@@ -172,7 +172,8 @@ class User:
             send_message(self.id, 'Спасибо, что сообщили о баге!')
             admins = get_users('admin')
             for admin in admins:
-                send_message(admin, f'Bug report from @{self.username} ' + arg)
+                send_message(admin, f'Bug report from @{self.username}\n' + arg)
+            return None
 
         # удаление запроса
         elif command == '/stop':
@@ -184,9 +185,10 @@ class User:
             return None
 
         elif command == '/help':
-            param = {'role': self.role, 'd_bal': self.d_bal,
-                     'maxsize': round(cred['maxsize']/10**6), 'max_sec': self.max_sec}
-            text = get_text_from_db('help', param)
+            text = get_text_from_db('help')
+            text += '\n\n'
+            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
+            text += get_text_from_db('referral', {'id': self.id, 'ref_bonus': mycursor.fetchone()[0]})
             send_message(self.id, text)
             return None
 
@@ -206,9 +208,9 @@ class User:
             values = [role[1:] for role in roles]  # d_bal, max_sec, role_active
             r = dict(zip(keys, values))
 
-            param_prod = {'price_mid': p['price_mid'], 'd_bal_mid': r['unlimited'][0],
-                          'max_sec_mid': r['unlimited'][2], 'd_bal_jun': r['standard'][0],
-                          'max_sec_jun': r['standard'][2]}
+            param_prod = {'unlimited_day': p['unlimited_day'], 'unlimited_week': p['unlimited_week'],
+                          'unlimited_month': p['unlimited_month'], 'max_sec_unlimited': r['unlimited'][1],
+                          'max_sec_standard': r['standard'][1]}
 
             if command == '/pay':
                 param = {'rate': p['rate']}
@@ -464,11 +466,11 @@ class User:
                     self.send_req_to_bass()
                     return None
                 else:
-                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\n от 0 до 4!")
+                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\n от 1 до 4!")
                     return None
             else:
                 send_message(self.id,
-                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\n от 0 до 4!")
+                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\n от 1 до 4!")
                 return None
 
         send_message(self.id,
@@ -520,7 +522,7 @@ class User:
             cut = self.max_sec
             send_message(self.id,
                          '<b>Внимание!</b>' +
-                         f'\nВаша роль не позволяет обрабатывать песни более {cut} секунд.' +
+                         f'\nВаша роль не позволяет обрабатывать песни более <b>{cut}</b> секунд.' +
                          f'\nПесня будет обрезана до этого значения!')
         else:
             return None
@@ -762,7 +764,7 @@ class InlineButton:
         else:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
-            unlim_prod = {'unlimited_day': 1,'unlimited_week': 7, 'unlimited_month': 30}
+            unlim_prod = {'unlimited_day': 1, 'unlimited_week': 7, 'unlimited_month': 30}
             if self.data in unlim_prod:
                 mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
                 price = mycursor.fetchone()[0]
@@ -771,7 +773,7 @@ class InlineButton:
                         """UPDATE users SET balance = balance - %s, role_ = 'unlimited',
                         role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
                         WHERE id = %s""",
-                        (price, unlim_prod[data], unlim_prod[data], self.user_id))
+                        (price, unlim_prod[self.data], unlim_prod[self.data], self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
                     mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
