@@ -1,6 +1,9 @@
 # function update balance every day at 00:10 UTC +3 (Moscow Time)
 import mysql.connector
 import boto3
+import requests
+import time
+import json
 
 
 # Get cred
@@ -16,13 +19,13 @@ def get_cred():
 
 cred = get_cred()
 
+# TelegramBot
+Token = cred['bot_token']
+URL = "https://api.telegram.org/bot{}/".format(Token)
+
 
 # event from CloudWatch
 def lambda_handler(event, context):
-    # если это не событие по графику, то игнорируем
-    if "time" not in event.keys():
-        return None
-
     global mycursor
     global mydb
     # обновляем подключение к бд
@@ -30,12 +33,24 @@ def lambda_handler(event, context):
 
     print(event)
 
-    # обновляем таблицу
-    mycursor.execute(update_role())
-    mydb.commit()
-    mycursor.execute(update_bal())
-    mydb.commit()
-
+    # проверяем на событие по графику
+    if "time" in event.keys():
+        # обновляем таблицу
+        mycursor.execute(update_role())
+        mydb.commit()
+        mycursor.execute(update_bal())
+        mydb.commit()
+    elif "Records" in event.keys():
+        message = event['Records'][0]['Sns']['Message']
+        # рассылка всем пользователям
+        if json.loads(message) == 'update':
+            mycursor.execute("SELECT id FROM users ORDER BY num")
+            ids = mycursor.fetchall()
+            user_id_list = [chat_id[0] for chat_id in ids]
+            text = get_text_from_db('update')
+            for chat_id in user_id_list:
+                send_message(chat_id, text)
+                time.sleep(0.04)
 
 # Connect to RDS database
 def connect_db():
@@ -50,6 +65,19 @@ def connect_db():
     return mycursor, mydb
 
 
+# получаем текст с базы данных
+def get_text_from_db(tag, param=None):
+    mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag,))
+    text = mycursor.fetchone()[0]
+    if text:
+        if param:
+            try:
+                text = text.format(**param)
+            except:
+                return None
+        return text
+
+
 def update_bal():
     return '''UPDATE users
                SET balance =
@@ -62,3 +90,10 @@ def update_role():
                   SET role_ = 'standard',
                   role_end = NULL
                   WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
+
+
+# Telegram methods
+def send_message(chat_id, text):
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    requests.get(url)
+

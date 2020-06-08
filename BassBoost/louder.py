@@ -137,7 +137,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     elif role == 'start_unlimited':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         text = get_text_from_db('after_req_start_unlim')
-        if random.random() <= 0.3:
+        if random.random() <= 0.1:
             text += '\n\n'
             mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
             text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': mycursor.fetchone()[0]})
@@ -199,6 +199,7 @@ def connect_db():
     mycursor = mydb.cursor()
     return mycursor, mydb
 
+
 def get_text_from_db(tag, param=None):
     mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag,))
     text = mycursor.fetchone()[0]
@@ -209,4 +210,3 @@ def get_text_from_db(tag, param=None):
             except:
                 return None
         return text
-    admins = get_users('admin')

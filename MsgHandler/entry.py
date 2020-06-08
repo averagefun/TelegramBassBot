@@ -131,18 +131,23 @@ class User:
         row_text = self.text.split('\n')
         text = row_text[0].split()
         command = text[0]
-        if len(text) == 1:
-            arg, arg2 = None, None
-        elif len(text) == 2:
-            arg = text[1]
-            if len(row_text) == 1:
-                arg2 = None
-            else:
-                arg2 = '\n'.join(row_text[1:])
 
+        # если admin - делим всё сообщение на 2 аргумента!
+        if self.role == 'admin':
+            if len(text) == 1:
+                arg, arg2 = None, None
+            elif len(text) == 2:
+                arg = text[1]
+                if len(row_text) == 1:
+                    arg2 = None
+                else:
+                    arg2 = '\n'.join(row_text[1:])
+
+            else:
+                send_message(self.id, 'Введите второй аргумент с новой строки!')
+                return None
         else:
-            send_message(self.id, 'Введите второй аргумент с новой строки!')
-            return None
+            arg, arg2 = None, None
 
         # standard
         role = self.role.replace('start', 'standard').replace('_unlimited', '')
@@ -168,11 +173,11 @@ class User:
             return None
 
         # сообщение о баге
-        elif command == '/bug' and arg:
+        elif command == '/bug' and len(self.text) > 5:
             send_message(self.id, 'Спасибо, что сообщили о баге!')
             admins = get_users('admin')
             for admin in admins:
-                send_message(admin, f'Bug report from @{self.username}\n' + arg)
+                send_message(admin, f'Bug report from @{self.username}\n' + self.text[5:])
             return None
 
         # удаление запроса
@@ -316,22 +321,19 @@ class User:
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
+            text = get_text_from_db('uniq_msg')
             if arg == 'confirm' and arg2:
-                text = get_text_from_db('uniq_msg')
                 usernames = "', '".join(user[1:] for user in arg2.split())
                 mycursor.execute(f"SELECT id FROM users WHERE username in ('{usernames}')")
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
                 diff = len(arg2.split())-len(id_for_msg)
                 if diff == 0:
-                    for id in id_for_msg:
-                        try:
-                            send_message(id, text)
-                        except:
-                            send_message(self.id, f'Error {id}')
+                    for chat_id in id_for_msg:
+                        send_message(chat_id, text)
+                        time.sleep(0.05)
                 else:
                     send_message(self.id, f'NameError: {diff} пользователя не найдено!')
             else:
-                text = get_text_from_db('uniq_msg')
                 send_message(self.id, text)
 
         # ban пользователя
@@ -400,17 +402,10 @@ class User:
             else:
                 send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
 
+        # рассылка всем пользователям
         elif command == '/update':
             if arg == 'confirm':
-                mycursor.execute("SELECT id FROM users ORDER BY num")
-                names = mycursor.fetchall()
-                user_id_list = [name[0] for name in names]
-                text = get_text_from_db('update')
-                for id in user_id_list:
-                    try:
-                        send_message(id, text)
-                    except:
-                        send_message(self.id, f'Error {id}')
+                put_SNS('MailingTrigger', 'update')
             else:
                 mycursor.execute("SELECT text FROM msgs WHERE name = 'update'")
                 text = mycursor.fetchone()[0]
@@ -499,7 +494,7 @@ class User:
             "UPDATE users SET status_ = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
             (self.id,))
         mydb.commit()
-        put_SNS(req_id)
+        put_SNS('BassBoostTrigger', req_id)
 
     # автоматическое обрезание песни
     def auto_cut(self, duration):
@@ -535,7 +530,7 @@ class User:
         # пытаемся распознать текст, иначе понимаем что юзер скинул неизвестный документ
         try:
             self.text = self.event['message']['text']
-        except:
+        except KeyError:
             # если мы сейчас ожидаем аудио >> неизвестный формат
             if self.status == "wait_file":
                 send_message(self.id, 'Упс, ожидался файл формата mp3, ogg, mp4. Отправьте файл снова!')
@@ -596,7 +591,7 @@ class User:
                 try:
                     f0 = round(float(s[0]), 1)
                     f1 = round(float(s[1]), 1)
-                except:
+                except ValueError:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
                                  'reply_markup', json.dumps(cut_markup))
@@ -634,7 +629,7 @@ class User:
                 try:
                     # f - начало басса
                     f = round(float(self.text), 1)
-                except:
+                except ValueError:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
                                  'reply_markup', json.dumps(startbass_markup))
@@ -879,7 +874,7 @@ def get_text_from_db(tag, param=None):
         if param:
             try:
                 text = text.format(**param)
-            except:
+            except KeyError:
                 admins = get_users('admin')
                 for admin in admins:
                     send_message(admin, f'!!! <b>ERROR</b> Error with format {tag}!')
@@ -897,7 +892,7 @@ def send_sticker(chat_id, sticker):
         try:
             r = requests.get(url).json()
             return r['result']['message_id']
-        except:
+        except KeyError:
             pass
 
     # если ошибка
@@ -932,8 +927,8 @@ def connect_db():
 
 
 # publish to SNS topic
-def put_SNS(message):
-    arn = cred['BassBoostTrigger_topic_arn']
+def put_SNS(topic_name, message):
+    arn = cred[f'{topic_name}_topic_arn']
     client = boto3.client('sns')
 
     response = client.publish(
