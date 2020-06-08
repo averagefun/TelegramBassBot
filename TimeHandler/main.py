@@ -33,24 +33,19 @@ def lambda_handler(event, context):
 
     print(event)
 
-    # проверяем на событие по графику
-    if "time" in event.keys():
-        # обновляем таблицу
-        mycursor.execute(update_role())
-        mydb.commit()
-        mycursor.execute(update_bal())
-        mydb.commit()
-    elif "Records" in event.keys():
+    # проверяем на SNS событие
+    if "Records" in event.keys():
         message = event['Records'][0]['Sns']['Message']
         # рассылка всем пользователям
         if json.loads(message) == 'update':
-            mycursor.execute("SELECT id FROM users ORDER BY num")
+            mycursor.execute("SELECT id FROM users_test ORDER BY num")
             ids = mycursor.fetchall()
             user_id_list = [chat_id[0] for chat_id in ids]
             text = get_text_from_db('update')
             for chat_id in user_id_list:
                 send_message(chat_id, text)
                 time.sleep(0.04)
+
 
 # Connect to RDS database
 def connect_db():
@@ -73,23 +68,9 @@ def get_text_from_db(tag, param=None):
         if param:
             try:
                 text = text.format(**param)
-            except:
+            except KeyError:
                 return None
         return text
-
-
-def update_bal():
-    return '''UPDATE users
-               SET balance =
-               IF (balance >= (SELECT d_bal FROM roles WHERE roles.name = users.role_), balance,
-                    (SELECT d_bal FROM roles WHERE roles.name = users.role_))'''
-
-
-def update_role():
-    return '''UPDATE users
-                  SET role_ = 'standard',
-                  role_end = NULL
-                  WHERE (NOW() + INTERVAL 3 HOUR) >= role_end'''
 
 
 # Telegram methods
