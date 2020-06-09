@@ -54,7 +54,7 @@ def lambda_handler(event, context):
 
     mydb.commit()
     mycursor.execute(f'SELECT * FROM bass_requests WHERE req_id = {req_id}')
-    req = mycursor.fetchall()[0]
+    req = mycursor.fetchone()
 
     # распознование запроса (req)
     chat_id = req[0]
@@ -126,29 +126,32 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
         sample = sample[dur[0] * 1000: dur[1] * 1000]
 
     # обновляем баланс и сохрагяем текст в зависимости от роли
-    table_dur = len(sample) / 1000
+    table_dur = round(len(sample) / 1000)
     mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
     role = mycursor.fetchone()[0]
     if role == 'start':
+        mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
+                         (table_dur, chat_id))
+        mydb.commit()
         mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
-        text = get_text_from_db('after_req_start', {'max_sec_standard': mycursor.fetchone()[0]})
-
-        mycursor.execute("""UPDATE users SET total = total + %s, role_ = 'standard',
-                         WHERE id = %s""", (table_dur, chat_id))
+        max_sec_standard = mycursor.fetchone()[0]
+        text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
 
     elif role == 'premium' or role == 'admin':
-        text = get_text_from_db('after_req_standard')
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
+        text = get_text_from_db('after_req_standard')
 
     # standard
     else:
         text = get_text_from_db('after_req_standard')
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
         if random.random() <= 0.1:
             text += '\n\n'
             mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
-            text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': mycursor.fetchone()[0]})
-        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
-    mydb.commit()
+            ref_bonus = mycursor.fetchone()[0]
+            text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
 
     # начало баса
     if start_b:
@@ -206,6 +209,6 @@ def get_text_from_db(tag, param=None):
         if param:
             try:
                 text = text.format(**param)
-            except:
+            except KeyError:
                 return None
         return text

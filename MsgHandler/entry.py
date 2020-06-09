@@ -48,14 +48,12 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
                                                [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
                                                [{"text": "Удалить платёжную сессию!",
                                                  'callback_data': 'delete_payment'}]]}
-if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'one_time_keyboard': True, 'resize_keyboard': True}
-cut_markup = {'keyboard': [['Обрезать не нужно']], 'one_time_keyboard': True, 'resize_keyboard': True}
-startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'one_time_keyboard': True,
-                    'resize_keyboard': True}
+if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
+cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
+startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
 level = ['Лайтово', 'Средняя прожарка', 'Долбит нормально', 'Минус уши сразу']
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
-final_markup = {'keyboard': [['Всё верно!'], ['Отменить запрос']], 'one_time_keyboard': True, 'resize_keyboard': True}
 
 # admins
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
@@ -151,7 +149,8 @@ class User:
                 send_message(self.id, 'Введите второй аргумент с новой строки!')
                 return None
         else:
-            arg, arg2 = None, None
+            arg = ' '.join(self.text.split()[1:])
+            arg2 = None
 
         # standard
         if command not in commands_list['standard'] and self.role == 'standard':
@@ -161,14 +160,14 @@ class User:
         # начальное сообщение-приветствие
         if command == '/start':
             # проверка на реферальную ссылку
-            if arg and self.role == 'start':
+            if arg and self.status == 'start':
                 mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (int(arg), ))
                 res = mycursor.fetchone()
                 if res:
                     mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
                     ref_bonus = mycursor.fetchone()[0]
                     send_message(int(arg),
-                                 "@{} воспользовался вашей реферальной ссылкой!\nВам начислено {} Руб".format(
+                                 "@{} воспользовался вашей реферальной ссылкой!\nВам начислено <b>{}</b> руб!".format(
                                                                                     self.username, str(ref_bonus)))
                     mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (ref_bonus, int(arg)))
                     mydb.commit()
@@ -176,11 +175,11 @@ class User:
             return None
 
         # сообщение о баге
-        elif command == '/bug' and len(self.text) > 5:
+        elif command == '/bug' and arg:
             send_message(self.id, 'Спасибо, что сообщили о баге!')
             admins = get_users('admin')
             for admin in admins:
-                send_message(admin, f'Bug report from @{self.username}\n' + self.text[5:])
+                send_message(admin, f'Bug report from @{self.username}\n' + arg)
             return None
 
         # удаление запроса
@@ -245,10 +244,11 @@ class User:
             return None
 
         elif command == '/commands':
+            role = self.role.replace('start', 'standard')
             text = 'Доступные команды:\n'
             for item in commands_list.items():
                 text += ', '.join(item[1]) + '| '
-                if item[0] == self.role:
+                if item[0] == role:
                     break
             send_message(self.id, text)
             return None
@@ -458,11 +458,11 @@ class User:
                     self.send_req_to_bass()
                     return None
                 else:
-                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\n от 1 до 4!")
+                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\nот 1 до 4!")
                     return None
             else:
                 send_message(self.id,
-                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\n от 1 до 4!")
+                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\nот 1 до 4!")
                 return None
 
         send_message(self.id,
@@ -692,17 +692,15 @@ class InlineButton:
                 param = {'pay_id': self.msg_id, 'status': '<b>✅ Оплачено!</b>'}
                 text = get_text_from_db('pay_rule', param)
                 edit_message(self.user_id, self.msg_id, text)
-                # Получаем курс секунд
-                mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'rate'")
-                rate = mycursor.fetchone()[0]
-                sec = round(rate * pay_check['sum'])
+                # получаем сумму в рублях
+                sum_rub = pay_check['sum']
                 # обновляем баланс
                 mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s",
-                                 (sec, self.user_id))
+                                 (sum_rub, self.user_id))
                 mydb.commit()
                 send_sticker(self.user_id, 'money')
                 send_message(self.user_id,
-                             f"Оплата успешно завершена!\n Вам начислено <b>{sec}</b> секунд")
+                             f"Оплата успешно завершена!\nВам начислено <b>{sum_rub}</b> руб!")
             else:
                 if pay_check['error'] == 'Payment_not_found':
                     self.answer_query(
@@ -734,21 +732,21 @@ class InlineButton:
         else:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
-            unlim_prod = {'unlimited_day': 1, 'unlimited_week': 7, 'unlimited_month': 30}
-            if self.data in unlim_prod:
+            premium_prod = {'premium_day': 1, 'premium_week': 7, 'premium_month': 30}
+            if self.data in premium_prod:
                 mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
                 price = mycursor.fetchone()[0]
                 if balance >= price:
                     mycursor.execute(
-                        """UPDATE users SET balance = balance - %s, role_ = 'unlimited',
+                        """UPDATE users SET balance = balance - %s, role_ = 'premium',
                         role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
                         WHERE id = %s""",
-                        (price, unlim_prod[self.data], unlim_prod[self.data], self.user_id))
+                        (price, premium_prod[self.data], premium_prod[self.data], self.user_id))
                     mydb.commit()
                     self.answer_query("Успешно!")
                     mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
                     send_message(self.user_id,
-                                 f"Вы успешно приобрели подписку unlimited до {mycursor.fetchone()[0]} по МСК.")
+                                 f"Вы успешно приобрели подписку premium до {mycursor.fetchone()[0]} по МСК.")
 
                 else:
                     self.answer_query("Недостаточно средств на балансе!", show_alert=True)
