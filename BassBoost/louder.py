@@ -8,6 +8,7 @@ import time
 import requests
 import mysql.connector
 import random
+import json
 
 
 # Get cred
@@ -63,10 +64,11 @@ def lambda_handler(event, context):
     file_path = req[9]
 
     # работа с форматом mpeg
-    if format_ == 'mpeg' and file_path[-3:] == 'mp3':
-        format_ = 'mp3'
-    else:
-        format_ = 'mp4'
+    if format_ == 'mpeg':
+        if file_path[-3:] == 'mp3':
+            format_ = 'mp3'
+        else:
+            format_ = 'mp4'
 
     time_ = round(time.time())
     filename1 = f'{time_}.{format_}'
@@ -100,7 +102,8 @@ def lambda_handler(event, context):
         requests.post(url, files=files, data=data)
 
     # выводим сообщение смотря на роль
-    send_message(chat_id, text)
+    file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
+    send_message(chat_id, text, 'reply_markup', json.dumps(file_markup))
 
     # удаление ненужных файлов из темпа
     os.remove(f'/tmp/{filename1}')
@@ -175,8 +178,11 @@ def delete_message(chat_id, message_id):
     requests.get(url)
 
 
-def send_message(chat_id, text):
-    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+def send_message(chat_id, text, *args):  # Ф-ия отсылки сообщения/ *args: [0] - parameter_name, [1] - value
+    if len(args) == 0:
+        url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    elif len(args) == 2:
+        url = URL + "sendMessage?chat_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, text, args[0], args[1])
     requests.get(url)
 
 

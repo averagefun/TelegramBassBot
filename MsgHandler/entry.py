@@ -55,7 +55,7 @@ startbass_markup = {'keyboard': [['По умолчанию (с самого на
 level = ['Лайтово', 'Средняя прожарка', 'Долбит нормально', 'Минус уши сразу']
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
-file_markup = {'keyboard': [['Отправьте файл боту!']], 'one_time_keyboard': True, 'resize_keyboard': True}
+file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
 
 # admins
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
@@ -497,7 +497,7 @@ class User:
 
     def send_req_to_bass(self):
         # посылаем запрос
-        send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд')
+        send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд.')
         # получаем id сообщения (стикер с думающим утёнком)
         req_id = send_sticker(self.id, 'loading')
         file = get_file(self.id)
