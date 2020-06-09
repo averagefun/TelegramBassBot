@@ -38,6 +38,7 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 
 # Используемые типы
 tags = {'audio', 'voice', 'video_note', 'video'}
+formats = ('mpeg', 'mp3', 'mp4', 'ogg')
 
 # все используемые клавиатуры
 products = {"inline_keyboard": [[{"text": "Купить premium (24 часа)", 'callback_data': 'premium_day'}],
@@ -54,6 +55,7 @@ startbass_markup = {'keyboard': [['По умолчанию (с самого на
 level = ['Лайтово', 'Средняя прожарка', 'Долбит нормально', 'Минус уши сразу']
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
+file_markup = {'keyboard': [['Отправьте файл боту!']], 'one_time_keyboard': True, 'resize_keyboard': True}
 
 # admins
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
@@ -119,13 +121,13 @@ class User:
         send_sticker(self.id, 'start')
         start_param = {'username': self.username}
         text = get_text_from_db('start', start_param)
-        send_message(self.id, text)
+        send_message(self.id, text, 'reply_markup', json.dumps(file_markup))
         mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
         mydb.commit()
 
     def commands(self):
         # команды по ролям
-        commands_list = {'standard': ['/start', '/help', '/bug', '/stats', '/stop', '/pay', '/buy', '/commands'],
+        commands_list = {'standard': ['/start', '/help', '/bug', '/stats', '/cancel', '/pay', '/buy', '/commands'],
                          'premium': [],
                          'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
@@ -158,7 +160,7 @@ class User:
             return None
 
         # начальное сообщение-приветствие
-        if command == '/start':
+        if command == '/start' and (self.status == 'start' or self.role == 'admin'):
             # проверка на реферальную ссылку
             if arg and self.status == 'start':
                 mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (int(arg), ))
@@ -183,12 +185,13 @@ class User:
             return None
 
         # удаление запроса
-        elif command == '/stop':
+        elif command == '/cancel':
             mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
             mydb.commit()
             mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
             mydb.commit()
-            send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>')
+            send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>',
+                         'reply_markup', json.dumps(file_markup))
             return None
 
         elif command == '/help':
@@ -423,6 +426,18 @@ class User:
 
         audio = self.event['message'][tag]
 
+        # проверка на формат
+        format_ = audio['mime_type'].split('/')[1]
+        if format_ not in formats:
+            send_message(self.id,
+                         'Неизвестный формат файла! \n<b>Доступные форматы: mp3, ogg, mp4!</b>')
+            send_message(self.id, '<i>Загрузите файл для нового запроса!</i>')
+            mycursor.execute(f'DELETE FROM bass_requests WHERE id = %s', (self.id, ))
+            mydb.commit()
+            mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = %s", (self.id, ))
+            mydb.commit()
+            return None
+
         # проверка на длительность и размер файла
         duration = round(audio['duration'])
         if audio['file_size'] > cred['maxsize']:
@@ -435,9 +450,15 @@ class User:
         mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
         mydb.commit()
 
+        # пытаемся определить название файла
+        if 'title' in audio:
+            title = audio['title']
+        else:
+            title = 'Audio'
+
         # начинаем формировать запрос
-        mycursor.execute("INSERT INTO bass_requests (id, file_id, duration) VALUES (%s, %s, %s)", (
-            self.id, audio['file_id'], duration))
+        mycursor.execute("INSERT INTO bass_requests (id, file_id, format_, duration, file_name) VALUES (%s, %s, %s, %s, %s)", (
+            self.id, audio['file_id'], format_, duration, title))
         mydb.commit()
 
         if 'caption' in message:
@@ -514,7 +535,11 @@ class User:
         except KeyError:
             # если мы сейчас ожидаем аудио >> неизвестный формат
             if self.status == "wait_file":
-                send_message(self.id, 'Упс, ожидался файл формата mp3, ogg, mp4. Отправьте файл снова!')
+                send_message(self.id,
+                             '<b>Ошибка!</b>\nВы отправили файл <b>документом</b>!' +
+                             '\nВ этом случае бот не может узнать кодировку аудио и его продолжительность.' +
+                             '\n<b>Отправьте файл в виде аудио!</b>')
+
             # иначе мы получили неизвестный документ, когда ожидали сообщение
             else:
                 send_message(self.id, 'Ошибка! Введите ваш ответ более корректно!')
@@ -528,7 +553,8 @@ class User:
             self.start_msg()
 
         elif self.status == "wait_file":
-            send_message(self.id, 'Пожалуйста, отправьте <b>файл</b>, а не сообщение!')
+            send_message(self.id, 'Пожалуйста, отправьте <b>файл</b>, а не сообщение!',
+                         'reply_markup', json.dumps(file_markup))
 
         elif self.status == 'wait_edit':
             if self.text == 'Редактировать файл':

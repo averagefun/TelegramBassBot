@@ -35,9 +35,6 @@ shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
 os.chmod(r'/tmp/ffmpeg', 755)
 os.chmod(r'/tmp/ffprobe', 755)
 
-attenuate_db = 0
-accentuate_db = 15
-
 
 def lambda_handler(event, context):
     global mycursor
@@ -58,26 +55,18 @@ def lambda_handler(event, context):
 
     # распознование запроса (req)
     chat_id = req[0]
-    duration = req[3:5]
-    start_bass = req[5]
-    bass_level = req[6]
-    file_path = req[7]
-    format_ = file_path[-3:].replace('oga', 'ogg')
+    format_ = req[2]
+    file_name = req[3]
+    duration = req[5:7]
+    start_bass = req[7]
+    bass_level = req[8]
+    file_path = req[9]
 
-    if format_ not in formats_:
-        # пытаемся удалить ждущий стикер, иначе ничего не делаем
-        try:
-            delete_message(chat_id, req_id)
-        except:
-            pass
-        send_message(chat_id,
-                     'Ошибка в декодировании файла! \n<b>Проверьте, что файл имеет формат mp3, ogg, mp4!</b>')
-        send_message(chat_id, '<i>Загрузите файл для нового запроса!</i>')
-        mycursor.execute(f'DELETE FROM bass_requests WHERE id = {chat_id}')
-        mydb.commit()
-        mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = {chat_id}")
-        mydb.commit()
-        return None
+    # работа с форматом mpeg
+    if format_ == 'mpeg' and file_path[-3:] == 'mp3':
+        format_ = 'mp3'
+    else:
+        format_ = 'mp4'
 
     time_ = round(time.time())
     filename1 = f'{time_}.{format_}'
@@ -107,7 +96,7 @@ def lambda_handler(event, context):
     url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
     with open(f'/tmp/{filename2}', 'rb') as file:
         files = {'audio': file}
-        data = {'chat_id': chat_id, 'title': f'{req_id}_bass'}
+        data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted'}
         requests.post(url, files=files, data=data)
 
     # выводим сообщение смотря на роль
@@ -158,8 +147,11 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
         start_ = sample[:start_b * 1000]
         sample = sample[start_b * 1000:]
 
+    attenuate_db = 0
+    accentuate_db = 6 * (bass+1) ** 1.1
+
     filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), bass))
-    combined = (sample - attenuate_db).overlay(filtered + (accentuate_db * (bass + 1)))
+    combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
 
     if start_b:
         combined = start_ + combined
@@ -173,7 +165,7 @@ def bass_line_freq(track, bass):
     est_mean = np.mean(sample_track)
     # a-value
     est_std = 3 * np.std(sample_track) / (math.sqrt(2))
-    bass_factor = int(round((est_std - est_mean) * 0.005 * (bass + 1)))
+    bass_factor = int(round((est_std - est_mean) * 0.15 * (bass + 1) ** 1.1))
     return bass_factor
 
 

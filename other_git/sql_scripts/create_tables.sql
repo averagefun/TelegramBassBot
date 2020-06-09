@@ -30,6 +30,8 @@ select * from roles;
 CREATE TABLE bass_requests(
 id INT UNIQUE,
 file_id VARCHAR(255),
+format_ VARCHAR(31),
+file_name VARCHAR(255),
 duration SMALLINT,
 start_ SMALLINT,
 end_ SMALLINT,
