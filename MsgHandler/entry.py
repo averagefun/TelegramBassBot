@@ -318,7 +318,7 @@ class User:
                     send_message(self.id, msg)
                 else:
                     send_message(self.id, "Пустой результат!")
-            elif arg[0] == '@':
+            elif arg and arg[0] == '@':
                 mycursor.execute('SELECT * FROM users WHERE username = %s', (arg[1:],))
                 user_info = mycursor.fetchone()
 
