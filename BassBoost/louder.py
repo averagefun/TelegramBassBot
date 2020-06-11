@@ -139,7 +139,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
         text = get_text_from_db('after_req_standard')
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
-        if random.random() <= 0.1:
+        if random.random() <= 0.15:
             text += '\n\n'
             mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
             ref_bonus = mycursor.fetchone()[0]

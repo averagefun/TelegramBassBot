@@ -38,6 +38,7 @@ Resources:
       CodeUri: MsgHandler/
       Handler: entry.lambda_handler
       Timeout: 7
+      MemorySize: 256
       Runtime: python3.7
       Layers:
         - mysql_layer

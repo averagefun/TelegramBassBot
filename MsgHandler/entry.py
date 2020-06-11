@@ -101,7 +101,7 @@ class User:
                     req_sent: запрос отправлен, ожидание получения файла от BassBoost
                 '''
 
-        # get d_bal and max_sec
+        # get max_sec and role_active
         mycursor.execute("SELECT max_sec, role_active FROM roles WHERE name = %s", (self.role,))
         self.max_sec, self.role_active = mycursor.fetchone()
 
@@ -301,11 +301,11 @@ class User:
             if arg in param:
                 req = f"SELECT {param[arg]} FROM users"
                 if arg2 == 'all_active':
-                    req += " WHERE adminuery IS NOT NULL"
+                    req += " WHERE last_query IS NOT NULL"
                 elif arg2 == 'today':
                     req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR)"
                 elif arg2 == 'today_active':
-                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) and adminuery IS NOT NULL"
+                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) AND last_query IS NOT NULL"
 
                 mycursor.execute(req)
                 res = mycursor.fetchall()
@@ -318,6 +318,36 @@ class User:
                     send_message(self.id, msg)
                 else:
                     send_message(self.id, "Пустой результат!")
+            elif arg[0] == '@':
+                mycursor.execute('SELECT * FROM users WHERE username = %s', (arg[1:],))
+                user_info = mycursor.fetchone()
+
+                if not user_info:
+                    send_message(self.id, 'Пользователь не найден!')
+                    return None
+                else:
+                    role, balance, status, total = user_info[4:8]
+
+                if user_info[-1]:
+                    role_end = f"Действует до: {user_info[-1]} по МСК"
+                else:
+                    role_end = ""
+
+                # get max_sec and role_active
+                mycursor.execute("SELECT max_sec, role_active FROM roles WHERE name = %s", (role,))
+                max_sec, role_active = mycursor.fetchone()
+
+                if role_active:
+                    role += ' (активна)'
+                else:
+                    role += ' (НЕ активна)'
+
+                param = {'username': arg, 'balance': balance, 'role': role, 'role_end': role_end,
+                         'status': status, 'max_sec': max_sec, 'last_query': user_info[-2], 'total': total}
+                text = get_text_from_db('admin_stats', param)
+                send_message(self.id, text)
+                return None
+
             else:
                 # при отсутсвии аргумента выводим количество пользователей
                 mycursor.execute("SELECT count(*), sum(total) FROM users")
@@ -426,8 +456,13 @@ class User:
 
         audio = self.event['message'][tag]
 
+        # определение формата (если video_note >> mp4)
+        if tag != 'video_note':
+            format_ = audio['mime_type'].split('/')[1]
+        else:
+            format_ = 'mp4'
+
         # проверка на формат
-        format_ = audio['mime_type'].split('/')[1]
         if format_ not in formats:
             send_message(self.id,
                          'Неизвестный формат файла! \n<b>Доступные форматы: mp3, ogg, mp4!</b>')
@@ -805,8 +840,8 @@ def lambda_handler(event, context):
     user = User(event)
     # проверка на бан
     if user.role == 'ban':
-        send_message(user.id,
-                     'Сожалеем, но вы <b>забанены</b>. Если вам кажется, что это ошибка, обратитесь в поддержку.')
+        text = get_text_from_db('ban')
+        send_message(user.id, text)
         return None
 
     # debug mode
