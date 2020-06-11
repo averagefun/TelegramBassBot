@@ -81,9 +81,14 @@ def lambda_handler(event, context):
 
     # преобразование файла >> сохрание в tmp под форматом mp3
     filename2 = f'{chat_id}_{time_}.mp3'
+    # успешность декодирования файла ffmpeg
+    success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
-        combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
-        combined.export(file, format="mp3")
+        try:
+            combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+            combined.export(file, format="mp3")
+        except:
+            success = False
 
     # удаляем запрос и меняем статус
     mycursor.execute(f'DELETE FROM bass_requests WHERE id = {chat_id}')
@@ -94,20 +99,26 @@ def lambda_handler(event, context):
     # удаляем ждущий стикер
     delete_message(chat_id, req_id)
 
-    # посылаем файл
-    url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
-    with open(f'/tmp/{filename2}', 'rb') as file:
-        files = {'audio': file}
-        data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted'}
-        requests.post(url, files=files, data=data)
-
-    # выводим сообщение смотря на роль
-    file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
-    send_message(chat_id, text, 'reply_markup', json.dumps(file_markup))
-
-    # удаление ненужных файлов из темпа
+    # удаление первого файла из темпа
     os.remove(f'/tmp/{filename1}')
-    os.remove(f'/tmp/{filename2}')
+
+    if success:
+        # посылаем файл
+        url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
+        with open(f'/tmp/{filename2}', 'rb') as file:
+            files = {'audio': file}
+            data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted'}
+            requests.post(url, files=files, data=data)
+
+        # выводим сообщение смотря на роль
+        file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
+        send_message(chat_id, text, 'reply_markup', json.dumps(file_markup))
+
+        # удаляем BassBoost файл
+        os.remove(f'/tmp/{filename2}')
+
+    else:
+        send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
 
 
 def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):

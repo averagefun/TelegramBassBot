@@ -1,5 +1,5 @@
 # template file
-template.yaml
+template*.yaml
 
 # proxy file for local run
 MsgHandler/use_proxy.py

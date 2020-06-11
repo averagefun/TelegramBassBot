@@ -700,18 +700,14 @@ class User:
                 mycursor.execute('UPDATE bass_requests SET bass_level = %s WHERE id = %s',
                                  (l, self.id))
                 mydb.commit()
-                # обновляем статус на 4
-                mycursor.execute('UPDATE users SET status_ = "wait_correct_data" WHERE id = %s', (self.id,))
-                mydb.commit()
+                # отправляем запрос к BassBoostFunc
+                self.send_req_to_bass()
 
             # непонятный уровень баса, введённый пользователем
             else:
                 send_message(self.id,
                              'Такого уровня баса ещё не существует. Выберите уровень из <b>установленных значений!</b>',
                              'reply_markup', json.dumps(bass_markup))
-                return None
-
-            self.send_req_to_bass()
 
 
 def get_users(role):
