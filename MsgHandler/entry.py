@@ -64,8 +64,27 @@ creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 class User:
     def __init__(self, event):
         self.event = event
-        self.id = self.event['message']['chat']['id']
-        self.username = self.event['message']['chat']['username']
+
+        # проверка что это сообщение от пользователя, а не мусор
+        try:
+            self.id = self.event['message']['chat']['id']
+        except KeyError:
+            self.init_success = False
+            return None
+
+        # проверка на наличие username
+        try:
+            self.username = self.event['message']['chat']['username']
+        except KeyError:
+            send_message(self.id,
+                "Пожалуйста, установите ненулевой @username в настройках Telegram!")
+            send_message(self.id,
+                "После этого наберите /start если вы зашли к боту в первый раз, иначе повторите последнюю команду!")
+            self.init_success = False
+            return None
+
+        self.init_success = True
+
         mycursor.execute('SELECT * FROM users WHERE id = %s', (self.id,))
         self.user_info = mycursor.fetchone()
 
@@ -834,6 +853,10 @@ def lambda_handler(event, context):
 
     # инициализация юзера
     user = User(event)
+    # проверка на успешную инициализацию
+    if not user.init_success:
+        return None
+
     # проверка на бан
     if user.role == 'ban':
         text = get_text_from_db('ban')
