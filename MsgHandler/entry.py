@@ -139,10 +139,25 @@ class User:
     def start_msg(self):
         send_sticker(self.id, 'start')
         start_param = {'username': self.username}
-        text = get_text_from_db('start', start_param)
+        tag = 'start' if self.role_active else 'start_debug'
+        text = get_text_from_db(tag, start_param)
         send_message(self.id, text, 'reply_markup', json.dumps(file_markup))
-        mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
-        mydb.commit()
+        if self.role_active:
+            mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
+            mydb.commit()
+        else:
+            # проверка на реферальную ссылку при старте с дебагом
+            try:
+                text = self.event['message']['text'].split()
+            except KeyError:
+                pass
+            if text[0] == '/start' and len(text) == 2 and text[1].isdigit() and self.status == 'start':
+                ref_user_id = int(text[1])
+                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
+                res = mycursor.fetchone()
+                if res:
+                    mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
+                    mydb.commit()
 
     def commands(self):
         # команды по ролям
@@ -371,8 +386,14 @@ class User:
                 else:
                     role += ' (НЕ активна)'
 
+                # get ref_count
+                mycursor.execute("SELECT COUNT(*) FROM referral WHERE user_id = %s and invited_active = 1",
+                                                                                                (self.id, ))
+                ref_count = mycursor.fetchone()[0]
+
                 param = {'username': arg, 'balance': balance, 'role': role, 'role_end': role_end,
-                         'status': status, 'max_sec': max_sec, 'last_query': user_info[-2], 'total': total}
+                         'status': status, 'max_sec': max_sec, 'last_query': user_info[-2], 'total': total,
+                         'ref_count': ref_count}
                 text = get_text_from_db('admin_stats', param)
                 send_message(self.id, text)
                 return None
@@ -381,7 +402,7 @@ class User:
                 # при отсутсвии аргумента выводим количество пользователей
                 mycursor.execute("SELECT count(*), sum(total), sum(balance) FROM users")
                 res = mycursor.fetchone()
-                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}\nСумма баланса: {res[2]} руб.")
+                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}\nСумма балансов: {res[2]} руб.")
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
@@ -894,8 +915,6 @@ def lambda_handler(event, context):
     if user.role_active == 0:
         if user.status == 'start':
             user.start_msg()
-            text = get_text_from_db('start_debug')
-            send_message(user.id, text)
         else:
             text = get_text_from_db('sleep')
             send_message(user.id, text)

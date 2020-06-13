@@ -53,7 +53,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName:
               Ref: CredTableTBot
-            
+
   BassBoostFunction:
       Type: AWS::Serverless::Function
       Properties:
@@ -73,6 +73,8 @@ Resources:
           - numpy_layer
           - mysql_layer
           - requests_layer
+        EventInvokeConfig:
+          MaximumRetryAttempts: 0
         Events:
           BassReq:
             Type: SNS
@@ -96,13 +98,11 @@ Resources:
         - DynamoDBReadPolicy:
             TableName:
               Ref: CredTableTBot
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
       Events:
         Mailing:
           Type: SNS
           Properties:
             Topic:
               Ref: MailingTrigger
-
-
-
-
