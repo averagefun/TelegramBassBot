@@ -19,12 +19,18 @@ def get_cred():
 
 cred = get_cred()
 
+# check for correct value
+if cred['creator_id'].isdigit():
+    cred['creator_id'] = int(cred['creator_id'])
+
+# main admin - creator
+creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
+
 # TelegramBot
 Token = cred['bot_token']
 URL = "https://api.telegram.org/bot{}/".format(Token)
 
 
-# event from CloudWatch
 def lambda_handler(event, context):
     global mycursor
     global mydb
@@ -38,13 +44,31 @@ def lambda_handler(event, context):
         message = event['Records'][0]['Sns']['Message']
         # рассылка всем пользователям
         if json.loads(message) == 'update':
-            mycursor.execute("SELECT id FROM users ORDER BY num")
+            mycursor.execute("SELECT id FROM users WHERE role_ != 'block_by_user' ORDER BY num")
             ids = mycursor.fetchall()
             user_id_list = [chat_id[0] for chat_id in ids]
             text = get_text_from_db('update')
+
+            # проходимся по пользователям
+            n = k = 0
             for chat_id in user_id_list:
-                send_message(chat_id, text)
+                r = send_message(chat_id, text)
+                # проверяем на успешную отправку
+                if not r['ok']:
+                    # 403 - пользователь заблокировал бота
+                    if r['error_code'] == 403:
+                        mycursor.execute("UPDATE users SET role_ = 'block_by_user' WHERE id = %s", (chat_id, ))
+                        mydb.commit()
+                        mycursor.execute("UPDATE referral SET invited_active = 0 WHERE invited_id = %s", (chat_id, ))
+                        mydb.commit()
+                        n += 1
+                    else:
+                        send_message(creator['id'], f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
+                        return None
+                else:
+                    k+=1
                 time.sleep(0.04)
+            send_message(creator['id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
 
 
 # Connect to RDS database
@@ -76,5 +100,5 @@ def get_text_from_db(tag, param=None):
 # Telegram methods
 def send_message(chat_id, text):
     url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
-    requests.get(url)
-
+    r = requests.get(url).json()
+    return r

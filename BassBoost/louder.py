@@ -51,7 +51,7 @@ def lambda_handler(event, context):
     req_id = int(message)
 
     mydb.commit()
-    mycursor.execute(f'SELECT * FROM bass_requests WHERE req_id = {req_id}')
+    mycursor.execute(f'SELECT * FROM bass_requests WHERE req_id = %s', (req_id, ))
     req = mycursor.fetchone()
 
     # распознование запроса (req)
@@ -84,16 +84,16 @@ def lambda_handler(event, context):
     # успешность декодирования файла ffmpeg
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
-        try:
-            combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
-            combined.export(file, format="mp3")
-        except:
-            success = False
+        #try:
+        combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+        combined.export(file, format="mp3")
+        #except:
+            #success = False
 
     # удаляем запрос и меняем статус
-    mycursor.execute(f'DELETE FROM bass_requests WHERE id = {chat_id}')
+    mycursor.execute(f'DELETE FROM bass_requests WHERE id = %s', (chat_id, ))
     mydb.commit()
-    mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = {chat_id}")
+    mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = %s", (chat_id, ))
     mydb.commit()
 
     # удаляем ждущий стикер
@@ -130,31 +130,8 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
 
     # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = round(len(sample) / 1000)
-    mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
-    role = mycursor.fetchone()[0]
-    if role == 'start':
-        mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
-                         (table_dur, chat_id))
-        mydb.commit()
-        mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
-        max_sec_standard = mycursor.fetchone()[0]
-        text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
 
-    elif role == 'premium' or role == 'admin':
-        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
-        mydb.commit()
-        text = get_text_from_db('after_req_standard')
-
-    # standard
-    else:
-        text = get_text_from_db('after_req_standard')
-        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
-        mydb.commit()
-        if random.random() <= 0.15:
-            text += '\n\n'
-            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
-            ref_bonus = mycursor.fetchone()[0]
-            text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
+    text = get_text(table_dur, chat_id)
 
     # начало баса
     if start_b:
@@ -182,6 +159,50 @@ def bass_line_freq(track, bass):
     bass_factor = int(round((est_std - est_mean) * 0.15 * (bass + 1) ** 1.1))
     return bass_factor
 
+def get_text(table_dur, chat_id):
+    mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
+    role = mycursor.fetchone()[0]
+    if role == 'start':
+        # update status
+        mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
+                         (table_dur, chat_id))
+        mydb.commit()
+        # check for referral
+        mycursor.execute("SELECT user_id FROM referral WHERE invited_id = %s", (chat_id, ))
+        ref_user_id = mycursor.fetchone()
+        if ref_user_id:
+            query = "SELECT username, value_param FROM users, payment_param WHERE id = %s and name_param = 'ref_bonus'"
+            mycursor.execute(query, (chat_id, ))
+            username, ref_bonus = mycursor.fetchone()
+            send_message(ref_user_id[0],
+                            f"@{username} воспользовался вашей реферальной ссылкой! Вам начислено <b>{ref_bonus}</b> руб!")
+            # обновляем таблицы
+            mycursor.execute(
+                "UPDATE referral, users SET referral.invited_active = 1, users.balance = users.balance + %s WHERE invited_id = %s and users.id = %s",
+                                                                                                                (ref_bonus, chat_id, ref_user_id[0]))
+            mydb.commit()
+
+        mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
+        max_sec_standard = mycursor.fetchone()[0]
+        text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
+
+    elif role == 'premium' or role == 'admin':
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
+        text = get_text_from_db('after_req_standard')
+
+    # standard
+    else:
+        text = get_text_from_db('after_req_standard')
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
+        if random.random() <= 0.15:
+            text += '\n\n'
+            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
+            ref_bonus = mycursor.fetchone()[0]
+            text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
+
+    return text
 
 # Telegram methods
 def delete_message(chat_id, message_id):

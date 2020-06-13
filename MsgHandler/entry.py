@@ -57,7 +57,7 @@ bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'on
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
 
-# admins
+# main admin - creator
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 
 
@@ -128,8 +128,8 @@ class User:
         user_info = [self.id, self.username, "start", 0, "start", 0]
         # init admins
         if self.id == creator['id']:
-            user_info[2:4] = 'admin', 500
-            send_message(self.id, 'Привет! Создатель!')
+            user_info[2] = 'admin'
+            send_message(self.id, 'Привет, Создатель!')
         mycursor.execute(
             f'''INSERT INTO users (id, username, reg_date, role_, balance, status_, total) VALUES
                 (%s, %s, NOW() + INTERVAL 3 HOUR, %s, %s, %s, %s)''', user_info)
@@ -174,24 +174,29 @@ class User:
             arg2 = None
 
         # standard
-        if command not in commands_list['standard'] and self.role == 'standard':
+        if command not in commands_list['standard'] and self.role in ('start', 'standard'):
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
             return None
 
         # начальное сообщение-приветствие
-        if command == '/start' and (self.status == 'start' or self.role == 'admin'):
+        if command == '/start' and (self.status == 'start' or self.role in ('admin', 'block_by_user')):
+
             # проверка на реферальную ссылку
-            if arg and self.status == 'start':
-                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (int(arg), ))
+            if arg and arg.isdigit() and self.status == 'start':
+                ref_user_id = int(arg)
+                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
                 res = mycursor.fetchone()
                 if res:
-                    mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
-                    ref_bonus = mycursor.fetchone()[0]
-                    send_message(int(arg),
-                                 "@{} воспользовался вашей реферальной ссылкой!\nВам начислено <b>{}</b> руб!".format(
-                                                                                    self.username, str(ref_bonus)))
-                    mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (ref_bonus, int(arg)))
+                    mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
                     mydb.commit()
+
+            # восстановление роли standard после блокировки
+            if self.role == 'block_by_user':
+                mycursor.execute("UPDATE users SET role_ = 'standard' WHERE id = %s", (self.id, ))
+                mydb.commit()
+                mycursor.execute("UPDATE referral SET invited_active = 1 WHERE invited_id = %s", (self.id, ))
+                self.role = 'standard'
+
             self.start_msg()
             return None
 
@@ -259,8 +264,11 @@ class User:
             else:
                 role_end = ""
 
+            mycursor.execute("SELECT COUNT(*) FROM referral WHERE user_id = %s and invited_active = 1",
+                                                                                            (self.id, ))
+            ref_count = mycursor.fetchone()[0]
             param = {'balance': self.balance, 'role': self.role, 'role_end': role_end,
-                     'max_sec': self.max_sec, 'total': self.total}
+                     'max_sec': self.max_sec, 'total': self.total, 'ref_count': ref_count}
             text = get_text_from_db('stats', param)
             send_message(self.id, text)
             return None
@@ -325,6 +333,8 @@ class User:
                     req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR)"
                 elif arg2 == 'today_active':
                     req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) AND last_query IS NOT NULL"
+                elif arg2 == 'block':
+                    req += " WHERE role_ = 'block_by_user'"
 
                 mycursor.execute(req)
                 res = mycursor.fetchall()
@@ -369,9 +379,9 @@ class User:
 
             else:
                 # при отсутсвии аргумента выводим количество пользователей
-                mycursor.execute("SELECT count(*), sum(total) FROM users")
+                mycursor.execute("SELECT count(*), sum(total), sum(balance) FROM users")
                 res = mycursor.fetchone()
-                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}")
+                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}\nСумма баланса: {res[2]} руб.")
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
@@ -382,10 +392,27 @@ class User:
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
                 diff = len(arg2.split())-len(id_for_msg)
                 if diff <= 0:
+                    n = k = 0
                     for chat_id in id_for_msg:
-                        send_message(chat_id, text)
+                        r = send_message(chat_id, text)
+                        # проверяем на успешную отправку
+                        if not r['ok']:
+                            # 403 - пользователь заблокировал бота
+                            if r['error_code'] == 403:
+                                mycursor.execute("UPDATE users SET role_ = 'block_by_user' WHERE id = %s", (chat_id, ))
+                                mydb.commit()
+                                mycursor.execute("UPDATE referral SET invited_active = 0 WHERE invited_id = %s", (chat_id, ))
+                                mydb.commit()
+                                n += 1
+                            else:
+                                admins = get_users('admin')
+                                for admin in admins:
+                                    send_message(admin, f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
+                                return None
+                        else:
+                            k+=1
                         time.sleep(0.05)
-                    send_message(self.id, "Все сообщения успешно отправлены!")
+                    send_message(self.id, f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
                 else:
                     send_message(self.id, f'NameError: {diff} пользователя не найдено!')
             else:
@@ -457,7 +484,7 @@ class User:
             else:
                 send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
 
-        # рассылка всем пользователям
+        # рассылка всем пользователям кроме заблокировавших
         elif command == '/update':
             if arg == 'confirm':
                 put_SNS('MailingTrigger', 'update')
