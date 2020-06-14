@@ -194,25 +194,27 @@ class User:
             return None
 
         # начальное сообщение-приветствие
-        if command == '/start' and (self.status == 'start' or self.role in ('admin', 'block_by_user')):
+        if command == '/start':
+            if self.status == 'start' or self.role in ('admin', 'block_by_user'):
+                # проверка на реферальную ссылку
+                if arg and arg.isdigit() and self.status == 'start':
+                    ref_user_id = int(arg)
+                    mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
+                    res = mycursor.fetchone()
+                    if res:
+                        mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
+                        mydb.commit()
 
-            # проверка на реферальную ссылку
-            if arg and arg.isdigit() and self.status == 'start':
-                ref_user_id = int(arg)
-                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
-                res = mycursor.fetchone()
-                if res:
-                    mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
+                # восстановление роли standard после блокировки
+                if self.role == 'block_by_user':
+                    mycursor.execute("UPDATE users SET role_ = 'standard' WHERE id = %s", (self.id, ))
                     mydb.commit()
+                    mycursor.execute("UPDATE referral SET invited_active = 1 WHERE invited_id = %s", (self.id, ))
+                    self.role = 'standard'
 
-            # восстановление роли standard после блокировки
-            if self.role == 'block_by_user':
-                mycursor.execute("UPDATE users SET role_ = 'standard' WHERE id = %s", (self.id, ))
-                mydb.commit()
-                mycursor.execute("UPDATE referral SET invited_active = 1 WHERE invited_id = %s", (self.id, ))
-                self.role = 'standard'
-
-            self.start_msg()
+                self.start_msg()
+            else:
+                send_message(self.id, "Бот уже запущен и ожидает запрос!\n(/help - помощь по боту)")
             return None
 
         # сообщение о баге

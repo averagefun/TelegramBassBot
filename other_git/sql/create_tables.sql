@@ -72,7 +72,7 @@ select * from payment_param;
 # referral table
 CREATE TABLE referral(
 user_id INT NOT NULL,
-invited_id VARCHAR(255) UNIQUE,
+invited_id INT UNIQUE,
 invited_active BIT,
 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE);
 desc referral;

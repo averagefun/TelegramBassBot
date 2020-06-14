@@ -89,7 +89,7 @@ Resources:
       Description: "Update users balance every day at midnight"
       CodeUri: MailHandler/
       Handler: main.lambda_handler
-      Timeout: 30
+      Timeout: 100
       Runtime: python3.7
       Layers:
         - mysql_layer
