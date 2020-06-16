@@ -585,10 +585,6 @@ class User:
                 else:
                     send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\nот 1 до 4!")
                     return None
-            else:
-                send_message(self.id,
-                             "Описание файла не распознано.\nУказывайте уровень баса <b>цифрой</b>\nот 1 до 4!")
-                return None
 
         send_message(self.id,
                      'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
