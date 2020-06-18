@@ -8,9 +8,6 @@ import boto3
 import mysql.connector
 
 
-# uncomment this if run locally
-# import use_proxy
-
 # Get cred
 def get_cred():
     dynamodb = boto3.resource('dynamodb')
