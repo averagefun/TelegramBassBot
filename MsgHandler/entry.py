@@ -369,6 +369,7 @@ class User:
                     send_message(self.id, 'Пользователь не найден!')
                     return None
                 else:
+                    user_id = user_info[1]
                     role, balance, status, total = user_info[4:8]
 
                 if user_info[-1]:
@@ -387,10 +388,11 @@ class User:
 
                 # get ref_count
                 mycursor.execute("SELECT COUNT(*) FROM referral WHERE user_id = %s and invited_active = 1",
-                                                                                                (self.id, ))
+                                                                                                (user_id, ))
                 ref_count = mycursor.fetchone()[0]
 
-                param = {'username': arg, 'balance': balance, 'role': role, 'role_end': role_end,
+                param = {'id': user_id,'username': arg, 'balance': balance, 'reg_date': user_info[3],
+                         'role': role, 'role_end': role_end,
                          'status': status, 'max_sec': max_sec, 'last_query': user_info[-2], 'total': total,
                          'ref_count': ref_count}
                 text = get_text_from_db('admin_stats', param)

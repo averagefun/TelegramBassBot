@@ -1,9 +1,6 @@
 # template file
 template*.yaml
 
-# proxy file for local run
-MsgHandler/use_proxy.py
-
 # hidden folder
 hidden/
 
