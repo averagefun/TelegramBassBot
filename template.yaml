@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS
+
+  Sample SAM Template for AWS
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+
+Resources:
+
+  ## SNS TOPICS
+  BassBoostTrigger:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "BassBoostTrigger"
+
+  MailingTrigger:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "MailingTrigger"
+
+  ## DynamoDB TABLE
+  CredTableTBot:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: CredTableTBot
+      ProvisionedThroughput:
+        WriteCapacityUnits: 1
+        ReadCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: cred_name
+          AttributeType: S
+      KeySchema:
+        - KeyType: HASH
+          AttributeName: cred_name
+
+  ## FUNCTIONS
+  MsgHandler:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: MsgHandlerTBot
+      Description: "Handles message from TelegramBot"
+      CodeUri: MsgHandler/
+      Handler: entry.lambda_handler
+      Timeout: 7
+      MemorySize: 128
+      Runtime: python3.7
+      Layers:
+        - !Ref MySqlLayer
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName:
+              !GetAtt BassBoostTrigger.TopicName
+        - SNSPublishMessagePolicy:
+            TopicName:
+              !GetAtt MailingTrigger.TopicName
+        - DynamoDBCrudPolicy:
+            TableName:
+              Ref: CredTableTBot
+      Events:
+        BotApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
+
+  BassBoostFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        FunctionName: BassBoostTBot
+        Description: "BassBoost audio using ffmpeg layer"
+        CodeUri: BassBoost/
+        Handler: louder.lambda_handler
+        Timeout: 40
+        MemorySize: 2768
+        Runtime: python3.7
+        Policies:
+          - DynamoDBReadPolicy:
+              TableName:
+                Ref: CredTableTBot
+        Layers:
+          - !Ref ffmpegLayer
+          - !Ref NumpyLayer
+          - !Ref MySqlLayer
+        EventInvokeConfig:
+          MaximumRetryAttempts: 0
+        Events:
+          BassReq:
+            Type: SNS
+            Properties:
+              Topic:
+                Ref: BassBoostTrigger
+
+  MailHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: MailHandlerTBot
+      Description: "mailing message to all users"
+      CodeUri: MailHandler/
+      Handler: main.lambda_handler
+      Timeout: 100
+      Runtime: python3.7
+      Layers:
+        - !Ref MySqlLayer
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName:
+              Ref: CredTableTBot
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      Events:
+        Mailing:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: MailingTrigger
+
+  ## LAYERS
+  MySqlLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: mysql-connector
+      Description: python connect to mysql database
+      ContentUri: layers/mysql/
+      CompatibleRuntimes:
+      - python3.7
+
+  NumpyLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: numpy
+      Description: amazon linux numpy 16.04
+      ContentUri: layers/numpy/
+      CompatibleRuntimes:
+      - python3.7
+
+  ffmpegLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: ffmpeg
+      Description: ffmpeg for lambda
+      ContentUri: layers/ffmpeg/
+      CompatibleRuntimes:
+      - python3.7

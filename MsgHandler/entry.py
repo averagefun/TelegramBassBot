@@ -20,14 +20,10 @@ def get_cred():
 
 
 cred = get_cred()
-# convert to int some values
-if cred['maxsize'].isdigit():
-    cred['maxsize'] = int(cred['maxsize'])
-else:
-    cred['maxsize'] = 10000000
 
-if cred['creator_id'].isdigit():
-    cred['creator_id'] = int(cred['creator_id'])
+# convert to int some values
+cred['maxsize'] = int(cred['maxsize'])
+cred['creator_id'] = int(cred['creator_id'])
 
 # TelegramBot
 Token = cred['bot_token']
@@ -211,7 +207,7 @@ class User:
 
                 self.start_msg()
             else:
-                send_message(self.id, "Бот уже запущен и ожидает запрос!\n(/help - помощь по боту)")
+                send_message(self.id, "Бот уже запущен и ожидает\nфайл/сообщение!\n(/help - помощь по боту)")
             return None
 
         # сообщение о баге
@@ -881,14 +877,11 @@ class InlineButton:
         url = URL + "answerCallbackQuery?callback_query_id={}".format(self.call_id)
         requests.get(url)
 
-
-def lambda_handler(event, context):
+def msg_handler(event):
     global mycursor
     global mydb
     # обновляем подключение к бд
     mycursor, mydb = connect_db()
-
-    print(event)
 
     # проверка на нажатие инлайн кнопки
     if 'callback_query' in event.keys():
@@ -928,6 +921,22 @@ def lambda_handler(event, context):
     # Юзер написал текст
     else:
         user.msg()
+
+
+####################
+#  lambda_handler  #
+####################
+def lambda_handler(event, context):
+    # обрабатываем любые исключения
+    try:
+        event = json.loads(event['body'])
+        msg_handler(event)
+    except Exception as e:
+        print(f'ERROR:{e} || EVENT:{event}')
+        send_message(creator['id'], f'ERROR:\n{e}\nEVENT:\n{event}')
+
+    # в любом случае возвращаем телеграму код 200
+    return {'statusCode': 200}
 
 
 # Telegram methods

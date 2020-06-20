@@ -1,6 +1,3 @@
-# template file
-template*.yaml
-
 # hidden folder
 hidden/
 
@@ -226,5 +223,5 @@ $RECYCLE.BIN/
 # AWS sam
 .aws-sam/*
 
-# sam config
+# samconfig
 samconfig.toml

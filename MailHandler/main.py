@@ -1,4 +1,3 @@
-# function update balance every day at 00:10 UTC +3 (Moscow Time)
 import mysql.connector
 import boto3
 import requests
@@ -72,7 +71,10 @@ def lambda_handler(event, context):
                         return None
                 else:
                     k+=1
-                    time.sleep(0.035)
+                    # каждые 20 сообщений - пауза в 2 секунды
+                    if k % 20 == 0:
+                        time.sleep(2)
+                        send_message(creator['id'], f'Отправлено: <b>{k}</b> сообщений!')
             send_message(creator['id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
 
 
