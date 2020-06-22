@@ -159,6 +159,7 @@ def bass_line_freq(track, bass):
     bass_factor = int(round((est_std - est_mean) * 0.15 * (bass + 1) ** 1.1))
     return bass_factor
 
+
 def get_text(table_dur, chat_id):
     mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
     role = mycursor.fetchone()[0]
@@ -203,6 +204,7 @@ def get_text(table_dur, chat_id):
             text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
 
     return text
+
 
 # Telegram methods
 def delete_message(chat_id, message_id):
