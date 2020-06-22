@@ -120,7 +120,7 @@ Resources:
   MySqlLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: mysql-connector
+      LayerName: mysql_layer
       Description: python connect to mysql database
       ContentUri: layers/mysql/
       CompatibleRuntimes:
@@ -129,8 +129,8 @@ Resources:
   NumpyLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: numpy
-      Description: amazon linux numpy 16.04
+      LayerName: numpy_layer
+      Description: amazon linux numpy 18.4
       ContentUri: layers/numpy/
       CompatibleRuntimes:
       - python3.7
@@ -138,7 +138,7 @@ Resources:
   ffmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: ffmpeg
+      LayerName: ffmpeg_layer
       Description: ffmpeg for lambda
       ContentUri: layers/ffmpeg/
       CompatibleRuntimes:

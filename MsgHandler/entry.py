@@ -338,11 +338,11 @@ class User:
             if arg in param:
                 req = f"SELECT {param[arg]} FROM users"
                 if arg2 == 'all_active':
-                    req += " WHERE last_query IS NOT NULL"
+                    req += " WHERE last_query IS NOT NULL AND role_ != 'block_by_user'"
                 elif arg2 == 'today':
                     req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR)"
                 elif arg2 == 'today_active':
-                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) AND last_query IS NOT NULL"
+                    req += " WHERE DATE(reg_date) = DATE(NOW() + INTERVAL 3 HOUR) AND last_query IS NOT NULL AND role_ != 'block_by_user'"
                 elif arg2 == 'block':
                     req += " WHERE role_ = 'block_by_user'"
 
@@ -397,9 +397,9 @@ class User:
 
             else:
                 # при отсутсвии аргумента выводим количество пользователей
-                mycursor.execute("SELECT count(*), sum(total), sum(balance) FROM users")
+                mycursor.execute("SELECT count(*), sum(total), sum(balance) FROM users WHERE role_ != 'block_by_user'")
                 res = mycursor.fetchone()
-                send_message(self.id, f"Всего пользователей: {res[0]}\nВсего секунд: {res[1]}\nСумма балансов: {res[2]} руб.")
+                send_message(self.id, f"Всего пользователей: <b>{res[0]}</b>\nВсего секунд: <b>{res[1]}</b>\nСумма балансов: <b>{res[2]}</b> руб.")
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
@@ -876,6 +876,7 @@ class InlineButton:
     def answer_query_no_text(self):
         url = URL + "answerCallbackQuery?callback_query_id={}".format(self.call_id)
         requests.get(url)
+
 
 def msg_handler(event):
     global mycursor
