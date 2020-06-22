@@ -63,7 +63,7 @@ class User:
             self.id = self.event['message']['chat']['id']
         except KeyError:
             self.init_success = False
-            return None
+            return
 
         # проверка на наличие username
         try:
@@ -74,7 +74,7 @@ class User:
             send_message(self.id,
                 "После этого наберите /start если вы зашли к боту в первый раз, иначе повторите последнюю команду!")
             self.init_success = False
-            return None
+            return
 
         self.init_success = True
 
@@ -176,7 +176,7 @@ class User:
 
             else:
                 send_message(self.id, 'Введите второй аргумент с новой строки!')
-                return None
+                return
         else:
             arg = ' '.join(self.text.split()[1:])
             arg2 = None
@@ -184,7 +184,7 @@ class User:
         # standard
         if command not in commands_list['standard'] and self.role in ('start', 'standard'):
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
-            return None
+            return
 
         # начальное сообщение-приветствие
         if command == '/start':
@@ -208,7 +208,7 @@ class User:
                 self.start_msg()
             else:
                 send_message(self.id, "Бот уже запущен и ожидает\nфайл/сообщение!\n(/help - помощь по боту)")
-            return None
+            return
 
         # сообщение о баге
         elif command == '/bug' and arg:
@@ -216,7 +216,7 @@ class User:
             admins = get_users('admin')
             for admin in admins:
                 send_message(admin, f'Bug report from @{self.username}\n' + arg)
-            return None
+            return
 
         # удаление запроса
         elif command == '/cancel':
@@ -226,7 +226,7 @@ class User:
             mydb.commit()
             send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>',
                          'reply_markup', json.dumps(file_markup))
-            return None
+            return
 
         elif command == '/help':
             text = get_text_from_db('help')
@@ -234,7 +234,7 @@ class User:
             mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
             text += get_text_from_db('referral', {'id': self.id, 'ref_bonus': mycursor.fetchone()[0]})
             send_message(self.id, text)
-            return None
+            return
 
         # Оплата
         elif command in pays_command:
@@ -261,12 +261,12 @@ class User:
                 text += '\n\n'
                 text += get_text_from_db('products', param_prod)
                 send_message(self.id, text, 'reply_markup', json.dumps(pay_inline_markup))
-                return None
+                return
 
             elif command == '/buy':
                 text = get_text_from_db('products', param_prod)
                 send_message(self.id, text, 'reply_markup', json.dumps(products))
-                return None
+                return
 
         elif command == '/stats':
             if self.user_info[-1]:
@@ -281,7 +281,7 @@ class User:
                      'max_sec': self.max_sec, 'total': self.total, 'ref_count': ref_count}
             text = get_text_from_db('stats', param)
             send_message(self.id, text)
-            return None
+            return
 
         elif command == '/commands':
             role = self.role.replace('start', 'standard')
@@ -291,17 +291,17 @@ class User:
                 if item[0] == role:
                     break
             send_message(self.id, text)
-            return None
+            return
 
         # premium
         if command not in commands_list['premium'] and self.role == 'premium':
             send_message(self.id, 'Такой команды не существует или она не доступна вам!')
-            return None
+            return
 
         # admin
         if command not in commands_list['admin'] and self.role == 'admin':
             send_message(self.id, 'Такой команды не существует!')
-            return None
+            return
 
         # активирование ролей
         elif command == '/active':
@@ -314,7 +314,7 @@ class User:
                 if arg2:
                     if not arg2.isdigit():
                         send_message(self.id, 'Неверный аргумент (укажите 0 или 1)')
-                        return None
+                        return
                     mycursor.execute("UPDATE roles SET role_active = %s WHERE name = %s",
                                      (int(arg2), arg))
                     mydb.commit()
@@ -324,7 +324,7 @@ class User:
             elif arg:
                 if not arg.isdigit():
                     send_message(self.id, 'Неверный аргумент (укажите 0 или 1)')
-                    return None
+                    return
                 mycursor.execute("UPDATE roles SET role_active = %s WHERE name != 'admin'",
                                  (int(arg),))
                 mydb.commit()
@@ -363,7 +363,7 @@ class User:
 
                 if not user_info:
                     send_message(self.id, 'Пользователь не найден!')
-                    return None
+                    return
                 else:
                     user_id = user_info[1]
                     role, balance, status, total = user_info[4:8]
@@ -393,7 +393,7 @@ class User:
                          'ref_count': ref_count}
                 text = get_text_from_db('admin_stats', param)
                 send_message(self.id, text)
-                return None
+                return
 
             else:
                 # при отсутсвии аргумента выводим количество пользователей
@@ -426,7 +426,7 @@ class User:
                                 admins = get_users('admin')
                                 for admin in admins:
                                     send_message(admin, f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
-                                return None
+                                return
                         else:
                             k+=1
                         time.sleep(0.05)
@@ -476,7 +476,7 @@ class User:
                     r = send_message(self.id, arg2)
                     if not r['ok']:
                         send_message(self.id, r['description'])
-                        return None
+                        return
                     mycursor.execute("UPDATE msgs SET text = %s WHERE name = %s",
                                      (arg2, arg))
                     mydb.commit()
@@ -516,7 +516,7 @@ class User:
         if self.status != "wait_file":
             send_message(self.id,
                          'Извините, но на данном этапе не нужно загружать файл. <i>Введите корректный ответ!</i>')
-            return None
+            return
 
         audio = self.event['message'][tag]
 
@@ -535,7 +535,7 @@ class User:
             mydb.commit()
             mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = %s", (self.id, ))
             mydb.commit()
-            return None
+            return
 
         # проверка на длительность и размер файла
         duration = round(audio['duration'])
@@ -543,7 +543,7 @@ class User:
             send_message(self.id,
                              f"Мы не работаем с файлами больше {round(cred['maxsize']/10**6, 1)} Мб." +
                              "\n<b>Выберите файл поменьше!</b>")
-            return None
+            return
 
         # удаляем все предыдущие запросы во избежании багов
         mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
@@ -576,10 +576,10 @@ class User:
                     self.auto_cut(duration)
 
                     self.send_req_to_bass()
-                    return None
+                    return
                 else:
                     send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\nот 1 до 4!")
-                    return None
+                    return
 
         send_message(self.id,
                      'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
@@ -612,7 +612,7 @@ class User:
     # автоматическое обрезание песни
     def auto_cut(self, duration):
         if self.max_sec > duration:
-            return None
+            return
         # обрезаем файл, если максимальный объём меньше duration
         send_message(self.id,
                      '<b>Внимание!</b>' +
@@ -638,7 +638,7 @@ class User:
             # иначе мы получили неизвестный документ, когда ожидали сообщение
             else:
                 send_message(self.id, 'Ошибка! Введите ваш ответ более корректно!')
-            return None
+            return
 
         # command
         if self.text[0] == '/':
@@ -697,7 +697,7 @@ class User:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
                                  'reply_markup', json.dumps(cut_markup))
-                    return None
+                    return
                 if (f0 >= 0) and (f0 < f1) and (f1 <= duration):
                     # проверка на баланс
                     mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
@@ -711,7 +711,7 @@ class User:
                     send_message(self.id,
                                  'Хм, что-то не то с границами обрезки. <i>Напишите границы обрезки корректно!</i>',
                                  'reply_markup', json.dumps(cut_markup))
-                    return None
+                    return
 
             # обновляем статус на 2
             mycursor.execute('UPDATE users SET status_ = "wait_bass_start" WHERE id = %s', (self.id,))
@@ -728,7 +728,7 @@ class User:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
                                  'reply_markup', json.dumps(startbass_markup))
-                    return None
+                    return
                 mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id,))
                 duration = mycursor.fetchone()
                 if not duration[1]:
@@ -745,7 +745,7 @@ class User:
                     send_message(self.id,
                                  'Хм, что-то не так со временем начала баса. <i>Напишите границы обрезки корректно!</i>',
                                  'reply_markup', json.dumps(startbass_markup))
-                    return None
+                    return
 
             send_message(self.id, '<b>Выбери уровень баса:</b>', 'reply_markup', json.dumps(bass_markup))
             # обновляем статус
@@ -793,7 +793,7 @@ class InlineButton:
             r = send_message(self.user_id, 'Создание оплаты...')
             if not r['ok']:
                 send_message(self.user_id, 'Ошибка в создании оплаты, повторите попытку позже.')
-                return None
+                return
             pay_id = r['result']['message_id']
             param = {'pay_id': pay_id, 'status': '❌ НЕ оплачено!'}
             text = get_text_from_db('pay_rule', param)
@@ -888,19 +888,19 @@ def msg_handler(event):
     if 'callback_query' in event.keys():
         button = InlineButton(event)
         button.action()
-        return None
+        return
 
     # инициализация юзера
     user = User(event)
     # проверка на успешную инициализацию
     if not user.init_success:
-        return None
+        return
 
     # проверка на бан
     if user.role == 'ban':
         text = get_text_from_db('ban')
         send_message(user.id, text)
-        return None
+        return
 
     # debug mode
     if user.role_active == 0:
@@ -910,7 +910,7 @@ def msg_handler(event):
             text = get_text_from_db('sleep')
             send_message(user.id, text)
             send_sticker(user.id, 'sleep')
-        return None
+        return
 
     # проверяем: это сообщение или файл - находим общие ключи
     c = list(set(event['message'].keys()) & tags)
