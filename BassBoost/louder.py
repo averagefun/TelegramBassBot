@@ -56,6 +56,7 @@ def lambda_handler(event, context):
 
     # распознование запроса (req)
     chat_id = req[0]
+    file_id = req[1]
     format_ = req[2]
     file_name = req[3]
     duration = req[5:7]
@@ -108,15 +109,21 @@ def lambda_handler(event, context):
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
             data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted'}
-            requests.post(url, files=files, data=data)
+            r = requests.post(url, files=files, data=data)
 
         # выводим сообщение смотря на роль
         file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
-        send_message(chat_id, text, 'reply_markup', json.dumps(file_markup))
+        send_message(chat_id, text, file_markup)
 
         # удаляем BassBoost файл
         os.remove(f'/tmp/{filename2}')
 
+        # посылаем 2 файла в канал
+        mycursor.execute("SELECT username FROM users WHERE id = %s", (chat_id,))
+        username = mycursor.fetchone()[0]
+
+        bass_file_id = json.loads(r.content)['result']['audio']['file_id']
+        send_to_channel(username, file_id, bass_file_id)
     else:
         send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
 
@@ -212,11 +219,18 @@ def delete_message(chat_id, message_id):
     requests.get(url)
 
 
-def send_message(chat_id, text, *args):  # Ф-ия отсылки сообщения/ *args: [0] - parameter_name, [1] - value
-    if len(args) == 0:
-        url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
-    elif len(args) == 2:
-        url = URL + "sendMessage?chat_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, text, args[0], args[1])
+def send_message(chat_id, text, reply_markup=None):
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    if reply_markup:
+        url += f"&reply_markup={json.dumps(reply_markup)}"
+    r = requests.get(url).json()
+    return r
+
+
+def send_to_channel(username, file_id, bass_file_id):
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_channel_id'], file_id, f'<b>@{username}</b>')
+    requests.get(url)
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_channel_id'], bass_file_id, f'<b>@{username}</b> BASS')
     requests.get(url)
 
 

@@ -45,10 +45,10 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
 if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = ['Лайтово', 'Средняя прожарка', 'Долбит нормально', 'Минус уши сразу']
+level = ['Лайтово🔈', 'Средняя прожарка🔉', 'Долбит нормально🔊', 'Минус уши сразу📢']
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
-file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
+file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 
 # main admin - creator
 creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
@@ -69,8 +69,7 @@ class User:
         try:
             self.username = self.event['message']['chat']['username']
         except KeyError:
-            send_message(self.id,
-                "Пожалуйста, установите ненулевой @username в настройках Telegram!")
+            send_message(self.id, "Пожалуйста, установите ненулевой @username в настройках Telegram!")
             send_message(self.id,
                 "После этого наберите /start если вы зашли к боту в первый раз, иначе повторите последнюю команду!")
             self.init_success = False
@@ -134,7 +133,7 @@ class User:
         start_param = {'username': self.username}
         tag = 'start' if self.role_active else 'start_debug'
         text = get_text_from_db(tag, start_param)
-        send_message(self.id, text, 'reply_markup', json.dumps(file_markup))
+        send_message(self.id, text, file_markup)
         if self.role_active:
             mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
             mydb.commit()
@@ -225,7 +224,7 @@ class User:
             mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
             mydb.commit()
             send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>',
-                         'reply_markup', json.dumps(file_markup))
+                         file_markup)
             return
 
         elif command == '/help':
@@ -260,12 +259,12 @@ class User:
                 text = get_text_from_db('pay_system')
                 text += '\n\n'
                 text += get_text_from_db('products', param_prod)
-                send_message(self.id, text, 'reply_markup', json.dumps(pay_inline_markup))
+                send_message(self.id, text, pay_inline_markup)
                 return
 
             elif command == '/buy':
                 text = get_text_from_db('products', param_prod)
-                send_message(self.id, text, 'reply_markup', json.dumps(products))
+                send_message(self.id, text, products)
                 return
 
         elif command == '/stats':
@@ -584,7 +583,7 @@ class User:
         send_message(self.id,
                      'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
                      '\n(обрезка и прочее...):',
-                     'reply_markup', json.dumps(if_edit_markup))
+                     if_edit_markup)
 
         # обновляем статус
         mycursor.execute('UPDATE users SET status_ = "wait_edit" WHERE id = %s', (self.id,))
@@ -592,7 +591,7 @@ class User:
 
     def send_req_to_bass(self):
         # посылаем запрос
-        send_message(self.id, 'Запрос отправлен! Ожидайте файл в течение 15-40 секунд.')
+        send_message(self.id, '<b>Запрос отправлен!</b> Ожидайте файл в течение 15-40 секунд.')
         # получаем id сообщения (стикер с думающим утёнком)
         req_id = send_sticker(self.id, 'loading')
         file = get_file(self.id)
@@ -649,7 +648,7 @@ class User:
 
         elif self.status == "wait_file":
             send_message(self.id, 'Пожалуйста, отправьте <b>файл</b>, а не сообщение!',
-                         'reply_markup', json.dumps(file_markup))
+                         file_markup)
 
         elif self.status == 'wait_edit':
             if self.text == 'Редактировать файл':
@@ -658,7 +657,7 @@ class User:
                 send_message(self.id,
                              '<b>Сначала укажи границы обрезки файла файл (если нужно).</b>' +
                              '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
-                             'reply_markup', json.dumps(cut_markup))
+                             cut_markup)
             elif self.text == 'Пропустить редактирование':
                 # получаем длительность файла
                 mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
@@ -669,7 +668,7 @@ class User:
 
                 mycursor.execute("UPDATE users SET status_ = 'wait_bass_level' WHERE id = %s", (self.id,))
                 mydb.commit()
-                send_message(self.id, '<b>Выбери уровень баса:</b>', 'reply_markup', json.dumps(bass_markup))
+                send_message(self.id, '<b>Выбери уровень баса:</b>', bass_markup)
             else:
                 send_message(self.id, 'Нажмите одну из кнопок на клавиатуре!')
 
@@ -686,7 +685,7 @@ class User:
 
                 send_message(self.id,
                              'Теперь укажи, с какой секунды начинать усиливать бас.\nПример "5.2" - с 5.2 секунды.',
-                             'reply_markup', json.dumps(startbass_markup))
+                             startbass_markup)
             else:
                 s = self.text.split()
                 # проверка, что введены именно ЧИСЛА
@@ -696,7 +695,7 @@ class User:
                 except ValueError:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
-                                 'reply_markup', json.dumps(cut_markup))
+                                 cut_markup)
                     return
                 if (f0 >= 0) and (f0 < f1) and (f1 <= duration):
                     # проверка на баланс
@@ -706,11 +705,11 @@ class User:
                     send_message(self.id,
                                  'Всё чётко! Теперь укажи, <b>с какой секунды начинается бас.</b>' +
                                   '\nПример: "5.2" - с 5.2 секунды.\n<i>Указывай время с начала уже обрезанной песни!</i>',
-                                  'reply_markup', json.dumps(startbass_markup))
+                                  startbass_markup)
                 else:
                     send_message(self.id,
                                  'Хм, что-то не то с границами обрезки. <i>Напишите границы обрезки корректно!</i>',
-                                 'reply_markup', json.dumps(cut_markup))
+                                 cut_markup)
                     return
 
             # обновляем статус на 2
@@ -727,7 +726,7 @@ class User:
                 except ValueError:
                     send_message(self.id,
                                  'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
-                                 'reply_markup', json.dumps(startbass_markup))
+                                 startbass_markup)
                     return
                 mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id,))
                 duration = mycursor.fetchone()
@@ -744,10 +743,10 @@ class User:
                 else:
                     send_message(self.id,
                                  'Хм, что-то не так со временем начала баса. <i>Напишите границы обрезки корректно!</i>',
-                                 'reply_markup', json.dumps(startbass_markup))
+                                 startbass_markup)
                     return
 
-            send_message(self.id, '<b>Выбери уровень баса:</b>', 'reply_markup', json.dumps(bass_markup))
+            send_message(self.id, '<b>Выбери уровень баса:</b>', bass_markup)
             # обновляем статус
             mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
             mydb.commit()
@@ -767,7 +766,7 @@ class User:
             else:
                 send_message(self.id,
                              'Такого уровня баса ещё не существует. Выберите уровень из <b>установленных значений!</b>',
-                             'reply_markup', json.dumps(bass_markup))
+                             bass_markup)
 
 
 def get_users(role):
@@ -797,7 +796,7 @@ class InlineButton:
             pay_id = r['result']['message_id']
             param = {'pay_id': pay_id, 'status': '❌ НЕ оплачено!'}
             text = get_text_from_db('pay_rule', param)
-            edit_message(self.user_id, pay_id, text, "reply_markup", json.dumps(pay_check_inline_markup))
+            edit_message(self.user_id, pay_id, text, pay_check_inline_markup)
             mycursor.execute(
                 "INSERT INTO payment_query(pay_id, user_id, username, start_query, status_) VALUES (%s, %s, %s, NOW() + INTERVAL 3 HOUR, %s)",
                 (pay_id, self.user_id, self.username, "wait_for_payment"))
@@ -941,14 +940,10 @@ def lambda_handler(event, context):
 
 
 # Telegram methods
-def send_message(chat_id, text, *args):  # Ф-ия отсылки сообщения/ *args: [0] - parameter_name, [1] - value
-    if len(args) == 0:
-        url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
-    elif len(args) == 2:
-        url = URL + "sendMessage?chat_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, text, args[0], args[1])
-    elif len(args) == 4:
-        url = URL + "sendMessage?chat_id={}&text={}&{}={}&{}={}&parse_mode=HTML".format(chat_id, text, args[0], args[1],
-                                                                                        args[2], args[3])
+def send_message(chat_id, text, reply_markup=None):
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    if reply_markup:
+        url += f"&reply_markup={json.dumps(reply_markup)}"
     r = requests.get(url).json()
     return r
 
@@ -958,13 +953,10 @@ def send_message_not_parse(chat_id, text):
     requests.get(url)
 
 
-def edit_message(chat_id, message_id, text, *args):
-    if len(args) == 0:
-        url = URL + "editMessageText?chat_id={}&message_id={}&text={}&parse_mode=HTML".format(chat_id, message_id, text)
-    elif len(args) == 2:
-        url = URL + "editMessageText?chat_id={}&message_id={}&text={}&{}={}&parse_mode=HTML".format(chat_id, message_id,
-                                                                                                    text, args[0],
-                                                                                                    args[1])
+def edit_message(chat_id, message_id, text, reply_markup=None):
+    url = URL + "editMessageText?chat_id={}&message_id={}&text={}&parse_mode=HTML".format(chat_id, message_id, text)
+    if reply_markup:
+        url += f"&reply_markup={json.dumps(reply_markup)}"
     requests.get(url)
 
 
