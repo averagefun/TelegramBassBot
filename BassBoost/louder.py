@@ -85,11 +85,11 @@ def lambda_handler(event, context):
     # успешность декодирования файла ffmpeg
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
-        #try:
-        combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
-        combined.export(file, format="mp3")
-        #except:
-            #success = False
+        try:
+            combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+            combined.export(file, format="mp3")
+        except Exception:
+            success = False
 
     # удаляем запрос и меняем статус
     mycursor.execute(f'DELETE FROM bass_requests WHERE id = %s', (chat_id, ))
