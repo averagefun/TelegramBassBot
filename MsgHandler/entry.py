@@ -655,7 +655,7 @@ class User:
                 mycursor.execute("UPDATE users SET status_ = 'wait_cut' WHERE id = %s", (self.id, ))
                 mydb.commit()
                 send_message(self.id,
-                             '<b>Сначала укажи границы обрезки файла файл (если нужно).</b>' +
+                             '<b>Сначала укажи границы обрезки файла (если нужно).</b>' +
                              '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
                              cut_markup)
             elif self.text == 'Пропустить редактирование':
