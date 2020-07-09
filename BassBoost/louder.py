@@ -112,7 +112,7 @@ def lambda_handler(event, context):
             r = requests.post(url, files=files, data=data)
 
         # выводим сообщение смотря на роль
-        file_markup = {'keyboard': [['Отправьте файл боту!']], 'resize_keyboard': True}
+        file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
         send_message(chat_id, text, file_markup)
 
         # удаляем BassBoost файл
