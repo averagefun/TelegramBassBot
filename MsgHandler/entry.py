@@ -778,11 +778,11 @@ def get_users(role):
 class InlineButton:
     def __init__(self, event):
         call = event['callback_query']
-        self.user_id = call['message']['chat']['id']
-        self.username = call['message']['chat']['username']
+        self.msg = call['message']
+        self.user_id = self.msg['chat']['id']
         self.data = call['data']
         self.call_id = call['id']
-        self.msg_id = call['message']['message_id']
+        self.msg_id = self.msg['message_id']
 
     def action(self):
         # выполняем различные действия в зависимости от нажатия кнопки
@@ -799,7 +799,7 @@ class InlineButton:
             edit_message(self.user_id, pay_id, text, pay_check_inline_markup)
             mycursor.execute(
                 "INSERT INTO payment_query(pay_id, user_id, username, start_query, status_) VALUES (%s, %s, %s, NOW() + INTERVAL 3 HOUR, %s)",
-                (pay_id, self.user_id, self.username, "wait_for_payment"))
+                (pay_id, self.user_id, self.msg['chat']['username'], "wait_for_payment"))
             mydb.commit()
         elif self.data == 'check_payment':
             pay_check = pay.check_payment(self.msg_id, cred, mycursor, mydb)
@@ -843,6 +843,28 @@ class InlineButton:
             mydb.commit()
             self.answer_query('Успешно удалено')
             delete_message(self.user_id, self.msg_id)
+
+        elif self.data == 'anon_share':
+            send_to_admin_share_channel(self.msg['audio']['file_id'])
+            # удаляем клавиатуру
+            edit_markup(self.user_id, self.msg_id)
+            self.answer_query('Трек отправлен на модерацию в @BassBoostCollection!', show_alert=True)
+
+        elif self.data == 'name_share':
+            send_to_admin_share_channel(self.msg['audio']['file_id'], self.msg['chat']['username'])
+            # удаляем клавиатуру
+            edit_markup(self.user_id, self.msg_id)
+            self.answer_query('Трек отправлен на модерацию в @BassBoostCollection!', show_alert=True)
+
+        elif self.data == 'send_to_channel':
+            caption = self.msg['caption'] if 'caption' in self.msg else None
+            send_to_bass_channel(self.msg['audio']['file_id'], caption)
+            delete_message(self.user_id, self.msg_id)
+            self.answer_query('Трек успешно отправлен!', show_alert=True)
+
+        elif self.data == 'delete_from_admin_share_channel':
+            delete_message(self.user_id, self.msg_id)
+            self.answer_query('Успешно удалён!')
 
         # товары
         else:
@@ -960,8 +982,38 @@ def edit_message(chat_id, message_id, text, reply_markup=None):
     requests.get(url)
 
 
+def edit_markup(chat_id, message_id, reply_markup=None):
+    url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(chat_id, message_id)
+    if reply_markup:
+        url += f"&reply_markup={json.dumps(reply_markup)}"
+    requests.get(url)
+
+
 def delete_message(chat_id, message_id):
     url = URL + "deleteMessage?chat_id={}&message_id={}".format(chat_id, message_id)
+    requests.get(url)
+
+
+def send_to_admin_share_channel(bass_file_id, username=None):
+    if username:
+        url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_share_channel_id'],
+                                                                                      bass_file_id, f'<b>@{username}</b>')
+    else:
+        url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(cred['admin_share_channel_id'], bass_file_id)
+
+    # добавляем клавиатуру
+    admin_share_markup = {"inline_keyboard": [[{"text": "ОТПРАВИТЬ В КАНАЛ!", 'callback_data': 'send_to_channel'}],
+                                              [{"text": "УДАЛИТЬ ТРЕК!", 'callback_data': 'delete_from_admin_share_channel'}]]}
+    url += f"&reply_markup={json.dumps(admin_share_markup)}"
+    requests.get(url)
+
+
+def send_to_bass_channel(bass_file_id, caption=None):
+    if caption:
+        url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['bass_channel_id'],
+                                                                                      bass_file_id, f'<b>{caption}</b>')
+    else:
+        url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(cred['bass_channel_id'], bass_file_id)
     requests.get(url)
 
 

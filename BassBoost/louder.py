@@ -86,7 +86,7 @@ def lambda_handler(event, context):
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
         try:
-            combined, text = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+            combined, text, share_markup = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
             combined.export(file, format="mp3")
         except Exception:
             success = False
@@ -108,7 +108,7 @@ def lambda_handler(event, context):
         url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
-            data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted'}
+            data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted', 'reply_markup': json.dumps(share_markup)}
             r = requests.post(url, files=files, data=data)
 
         # выводим сообщение смотря на роль
@@ -123,7 +123,7 @@ def lambda_handler(event, context):
         username = mycursor.fetchone()[0]
 
         bass_file_id = json.loads(r.content)['result']['audio']['file_id']
-        send_to_channel(username, file_id, bass_file_id)
+        send_to_channel(file_id, bass_file_id, username)
     else:
         send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
 
@@ -138,7 +138,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = round(len(sample) / 1000)
 
-    text = get_text(table_dur, chat_id)
+    text, share_markup = get_text(table_dur, chat_id)
 
     # начало баса
     if start_b:
@@ -154,7 +154,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
     if start_b:
         combined = start_ + combined
 
-    return combined, text
+    return combined, text, share_markup
 
 
 def bass_line_freq(track, bass):
@@ -193,15 +193,19 @@ def get_text(table_dur, chat_id):
         mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
         max_sec_standard = mycursor.fetchone()[0]
         text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
+        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}]]}
 
     elif role == 'premium' or role == 'admin':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
         text = get_text_from_db('after_req_standard')
+        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}],
+                                                   [{"text": "Поделиться треком, указывая ник", 'callback_data': 'name_share'}]]}
 
     # standard
     else:
         text = get_text_from_db('after_req_standard')
+        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}]]}
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
         if random.random() <= 0.15:
@@ -210,7 +214,7 @@ def get_text(table_dur, chat_id):
             ref_bonus = mycursor.fetchone()[0]
             text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
 
-    return text
+    return text, share_markup
 
 
 # Telegram methods
@@ -227,10 +231,10 @@ def send_message(chat_id, text, reply_markup=None):
     return r
 
 
-def send_to_channel(username, file_id, bass_file_id):
-    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_channel_id'], file_id, f'<b>@{username}</b>')
+def send_to_channel(file_id, bass_file_id, username):
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_all_channel_id'], file_id, f'<b>@{username}</b>')
     requests.get(url)
-    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_channel_id'], bass_file_id, f'<b>@{username}</b> BASS')
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_all_channel_id'], bass_file_id, f'<b>@{username} BASS</b>')
     requests.get(url)
 
 
