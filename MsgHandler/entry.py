@@ -402,8 +402,35 @@ class User:
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
-            text = get_text_from_db('uniq_msg')
-            if arg == 'confirm' and arg2:
+            if arg and arg != 'saved' and arg2:
+                # понимаем, что хотим отправить быстрое сообщение
+                mycursor.execute(f"SELECT id FROM users WHERE username = %s", (arg[1:], ))
+                chat_id = mycursor.fetchone()
+                if not chat_id:
+                    send_message(self.id, f"Пользователь {arg} не найден!")
+                    return
+                else:
+                    chat_id = chat_id[0]
+                r = send_message(chat_id, arg2)
+                # проверяем на успешную отправку
+                if not r['ok']:
+                    # 403 - пользователь заблокировал бота
+                    if r['error_code'] == 403:
+                        mycursor.execute("UPDATE users SET role_ = 'block_by_user' WHERE id = %s", (chat_id,))
+                        mydb.commit()
+                        mycursor.execute("UPDATE referral SET invited_active = 0 WHERE invited_id = %s", (chat_id,))
+                        mydb.commit()
+                        send_message(self.id, "Пользователь заблокировал бота!")
+                    else:
+                        send_message(self.id,
+                                     f"!!! <b>ERROR</b>\n{r['description']}")
+                else:
+                    send_message(self.id, "Сообщение успешно отправлено!")
+                return
+
+            # режим отправки сохранённого сообщения
+            text = get_text_from_db('savedMsg')
+            if arg == 'saved' and arg2:
                 usernames = "', '".join(user[1:] for user in arg2.split())
                 mycursor.execute(f"SELECT id FROM users WHERE username in ('{usernames}')")
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
@@ -422,9 +449,7 @@ class User:
                                 mydb.commit()
                                 n += 1
                             else:
-                                admins = get_users('admin')
-                                for admin in admins:
-                                    send_message(admin, f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
+                                send_message(self.id, f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
                                 return
                         else:
                             k+=1
