@@ -869,27 +869,44 @@ class InlineButton:
             self.answer_query('Успешно удалено')
             delete_message(self.user_id, self.msg_id)
 
-        elif self.data == 'anon_share':
-            send_to_admin_share_channel(self.msg['audio']['file_id'])
-            # удаляем клавиатуру
-            edit_markup(self.user_id, self.msg_id)
-            self.answer_query('Трек отправлен на модерацию в @BassBoostCollection!', show_alert=True)
-
-        elif self.data == 'name_share':
-            send_to_admin_share_channel(self.msg['audio']['file_id'], self.msg['chat']['username'])
+        elif self.data in ('anon_share', 'name_share'):
+            caption = f"{self.user_id}|@{self.msg['chat']['username']}|"
+            caption += "anon" if self.data == 'anon_share' else "public"
+            caption += "|reason|artist-name"
+            send_to_admin_share_channel(self.msg['audio']['file_id'], caption)
             # удаляем клавиатуру
             edit_markup(self.user_id, self.msg_id)
             self.answer_query('Трек отправлен на модерацию в @BassBoostCollection!', show_alert=True)
 
         elif self.data == 'send_to_channel':
-            caption = self.msg['caption'] if 'caption' in self.msg else None
-            send_to_bass_channel(self.msg['audio']['file_id'], caption)
-            delete_message(self.user_id, self.msg_id)
-            self.answer_query('Трек успешно отправлен!', show_alert=True)
+            if self.msg['caption']:
+                parts = self.msg['caption'].split("|")
+                if len(parts) == 5 and parts[2] in ('anon', 'public'):
+                    caption = f"<b>{parts[4]} BassBoosted</b>"
+                    if parts[2] == 'public':
+                        caption += f"\nОтправил {parts[1]}"
+                    send_to_bass_channel(self.msg['audio']['file_id'], caption)
+                    delete_message(self.user_id, self.msg_id)
+                    self.answer_query('Трек успешно отправлен!', show_alert=True)
+                else:
+                    self.answer_query('Исправьте описание по образцу!', show_alert=True)
+            else:
+                self.answer_query('Добавьте к треку описание по образцу!', show_alert=True)
 
         elif self.data == 'delete_from_admin_share_channel':
-            delete_message(self.user_id, self.msg_id)
-            self.answer_query('Успешно удалён!')
+            if self.msg['caption']:
+                parts = self.msg['caption'].split("|")
+                if len(parts) != 5:
+                    self.answer_query("В описании должно быть 5 слов, разделённых '|'.", show_alert=True)
+                    return
+                text = "Извините, ваш трек не прошёл модерацию в канал @BassBoostCollection."
+                if parts[3] != 'reason':
+                    text += f" Причина: {parts[3]}."
+                text += " Попробуйте в следующий раз :)"
+                send_message(parts[0], text)
+                delete_message(self.user_id, self.msg_id)
+                self.answer_query('Успешно удалён!')
+
 
         # товары
         else:
@@ -1019,13 +1036,9 @@ def delete_message(chat_id, message_id):
     requests.get(url)
 
 
-def send_to_admin_share_channel(bass_file_id, username=None):
-    if username:
-        url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_share_channel_id'],
-                                                                                      bass_file_id, f'<b>@{username}</b>')
-    else:
-        url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(cred['admin_share_channel_id'], bass_file_id)
-
+def send_to_admin_share_channel(bass_file_id, caption):
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_share_channel_id'],
+                                                                                  bass_file_id, caption)
     # добавляем клавиатуру
     admin_share_markup = {"inline_keyboard": [[{"text": "ОТПРАВИТЬ В КАНАЛ!", 'callback_data': 'send_to_channel'}],
                                               [{"text": "УДАЛИТЬ ТРЕК!", 'callback_data': 'delete_from_admin_share_channel'}]]}
