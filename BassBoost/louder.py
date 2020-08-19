@@ -58,7 +58,15 @@ def lambda_handler(event, context):
     chat_id = req[0]
     file_id = req[1]
     format_ = req[2]
+
     file_name = req[3]
+    file_split = file_name.split('|')
+    if len(file_split) == 2:
+        file_performer = file_split[0]
+        file_name = file_split[1]
+    else:
+        file_performer = None
+
     duration = req[5:7]
     start_bass = req[7]
     bass_level = req[8]
@@ -109,6 +117,8 @@ def lambda_handler(event, context):
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
             data = {'chat_id': chat_id, 'title': f'{file_name} BassBoosted', 'reply_markup': json.dumps(share_markup)}
+            if file_performer:
+                data['performer'] = file_performer
             r = requests.post(url, files=files, data=data)
 
         # выводим сообщение смотря на роль

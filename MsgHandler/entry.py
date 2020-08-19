@@ -574,8 +574,12 @@ class User:
         mydb.commit()
 
         # пытаемся определить название файла
-        if 'title' in audio:
-            title = audio['title']
+        if 'performer' in audio and 'title' in audio:
+            title = f"{audio['performer'].replace('|',' ')}|{audio['title'].replace('|',' ')}"
+        elif 'title' in audio:
+            title = audio['title'].replace('|', ' ')
+        elif 'performer' in audio:
+            title = audio['performer'].replace('|', ' ')
         else:
             title = 'Audio'
 
@@ -870,9 +874,12 @@ class InlineButton:
             delete_message(self.user_id, self.msg_id)
 
         elif self.data in ('anon_share', 'name_share'):
-            caption = f"{self.user_id}|@{self.msg['chat']['username']}|"
+            caption = f"{self.user_id}|{self.msg_id}|@{self.msg['chat']['username']}|"
             caption += "anon" if self.data == 'anon_share' else "public"
-            caption += "|reason|artist-name"
+            caption += f"|reason|<b>"
+            if 'performer' in self.msg['audio']:
+                caption += f"{self.msg['audio']['performer']} - "
+            caption += f"{self.msg['audio']['title']}</b>"
             send_to_admin_share_channel(self.msg['audio']['file_id'], caption)
             # удаляем клавиатуру
             edit_markup(self.user_id, self.msg_id)
@@ -881,13 +888,16 @@ class InlineButton:
         elif self.data == 'send_to_channel':
             if self.msg['caption']:
                 parts = self.msg['caption'].split("|")
-                if len(parts) == 5 and parts[2] in ('anon', 'public'):
-                    caption = f"<b>{parts[4]} BassBoosted</b>"
-                    if parts[2] == 'public':
-                        caption += f"\nОтправил {parts[1]}"
+                if len(parts) == 6 and parts[3] in ('anon', 'public'):
+                    caption = parts[5]
+                    if parts[3] == 'public':
+                        caption += f"\nОтправил {parts[2]}"
                     send_to_bass_channel(self.msg['audio']['file_id'], caption)
                     delete_message(self.user_id, self.msg_id)
                     self.answer_query('Трек успешно отправлен!', show_alert=True)
+                    send_reply_message(parts[0],
+                                       "Ваш трек <b>успешно</b> прошёл модерацию в канал @BassBoostCollection!",
+                                       parts[1])
                 else:
                     self.answer_query('Исправьте описание по образцу!', show_alert=True)
             else:
@@ -896,17 +906,16 @@ class InlineButton:
         elif self.data == 'delete_from_admin_share_channel':
             if self.msg['caption']:
                 parts = self.msg['caption'].split("|")
-                if len(parts) != 5:
-                    self.answer_query("В описании должно быть 5 слов, разделённых '|'.", show_alert=True)
+                if len(parts) != 6:
+                    self.answer_query("В описании должно быть 6 слов, разделённых '|'.", show_alert=True)
                     return
                 text = "Извините, ваш трек не прошёл модерацию в канал @BassBoostCollection."
-                if parts[3] != 'reason':
-                    text += f" Причина: {parts[3]}."
+                if parts[4] != 'reason':
+                    text += f" Причина: {parts[4]}."
                 text += " Попробуйте в следующий раз :)"
-                send_message(parts[0], text)
+                send_reply_message(parts[0], text, parts[1])
                 delete_message(self.user_id, self.msg_id)
                 self.answer_query('Успешно удалён!')
-
 
         # товары
         else:
@@ -1010,6 +1019,11 @@ def send_message(chat_id, text, reply_markup=None):
         url += f"&reply_markup={json.dumps(reply_markup)}"
     r = requests.get(url).json()
     return r
+
+
+def send_reply_message(chat_id, text, msg_id):
+    url = URL + "sendMessage?chat_id={}&text={}&reply_to_message_id={}&parse_mode=HTML".format(chat_id, text, msg_id)
+    requests.get(url)
 
 
 def send_message_not_parse(chat_id, text):
