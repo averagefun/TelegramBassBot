@@ -717,13 +717,18 @@ class User:
                              startbass_markup)
             else:
                 s = self.text.split()
+                # проверка, что введено 2 значения
+                if len(s) != 2:
+                    send_message(self.id, "<b>Введите 2 числа!</b>")
+                    return
+
                 # проверка, что введены именно ЧИСЛА
                 try:
                     f0 = round(float(s[0]), 1)
                     f1 = round(float(s[1]), 1)
                 except ValueError:
                     send_message(self.id,
-                                 'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
+                                 'Синтаксическая ошибка! \n<b>Проверьте, что десятичная дробь записана через точку!</b>',
                                  cut_markup)
                     return
                 if (f0 >= 0) and (f0 < f1) and (f1 <= duration):
@@ -737,7 +742,7 @@ class User:
                                   startbass_markup)
                 else:
                     send_message(self.id,
-                                 'Хм, что-то не то с границами обрезки. <i>Напишите границы обрезки корректно!</i>',
+                                 'Границы обрезки выходят за длительность песни.\n<b>Напишите границы обрезки корректно!</b>',
                                  cut_markup)
                     return
 
@@ -754,7 +759,7 @@ class User:
                     f = round(float(self.text), 1)
                 except ValueError:
                     send_message(self.id,
-                                 'Синтаксическая ошибка! \n<b>проверьте, что десятичная дробь записана через точку!</b>',
+                                 'Синтаксическая ошибка! \n<b>Проверьте, что десятичная дробь записана через точку!</b>',
                                  startbass_markup)
                     return
                 mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id,))
@@ -771,7 +776,9 @@ class User:
                     mydb.commit()
                 else:
                     send_message(self.id,
-                                 'Хм, что-то не так со временем начала баса. <i>Напишите границы обрезки корректно!</i>',
+                                 "Начало баса выходит за границы песни.\n" +
+                                 "<i>(Если вы обрезали песню, то считайте начало от уже обрезанной песни!)</i>\n" +
+                                 "<b>Напишите время корректно!</b>",
                                  startbass_markup)
                     return
 
