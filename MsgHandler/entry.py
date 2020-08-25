@@ -436,28 +436,41 @@ class User:
                 id_for_msg = [user[0] for user in mycursor.fetchall()]
                 diff = len(arg2.split())-len(id_for_msg)
                 if diff <= 0:
-                    n = k = 0
+                    k = 0
+                    blocked = []
                     for chat_id in id_for_msg:
                         r = send_message(chat_id, text)
+                        time.sleep(0.04)
                         # проверяем на успешную отправку
                         if not r['ok']:
-                            # 403 - пользователь заблокировал бота
                             if r['error_code'] == 403:
-                                mycursor.execute("UPDATE users SET role_ = 'block_by_user' WHERE id = %s", (chat_id, ))
-                                mydb.commit()
-                                mycursor.execute("UPDATE referral SET invited_active = 0 WHERE invited_id = %s", (chat_id, ))
-                                mydb.commit()
-                                n += 1
+                                # 403 - пользователь заблокировал бота
+                                blocked.append(chat_id)
                             else:
-                                send_message(self.id, f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
+                                # прочая ошибка
+                                send_message(creator['id'],
+                                             f"!!! <b>ERROR</b> на {k + 1} человеке (id: {chat_id}):\n{r['description']}")
                                 return
                         else:
-                            k+=1
-                        time.sleep(0.05)
-                    send_message(self.id, f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
+                            k += 1
+
+                    n = len(blocked)
+                    if n > 0:
+                        # обновляем заблокированных пользователей
+                        blocked = ', '.join(map(str, blocked))
+                        # update block users
+                        mycursor.execute(f"UPDATE users SET role_ = 'block_by_user' WHERE id in ({blocked})")
+                        mydb.commit()
+
+                        mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
+                        mydb.commit()
+
+                    send_message(creator['id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
                 else:
+                    # Часть пользователей не найдена
                     send_message(self.id, f'NameError: {diff} пользователя не найдено!')
             else:
+                # Как будет выглядеть сообщение
                 send_message(self.id, text)
 
         # ban пользователя
