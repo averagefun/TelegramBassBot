@@ -23,7 +23,8 @@ cred = get_cred()
 
 # convert to int some values
 cred['maxsize'] = int(cred['maxsize'])
-cred['creator_id'] = int(cred['creator_id'])
+# main admin - creator
+creator = {'id': int(cred['creator_id']), 'username': cred['creator_username']}
 
 # TelegramBot
 Token = cred['bot_token']
@@ -49,9 +50,6 @@ level = ['Лайтово🔈', 'Средняя прожарка🔉', 'Долб�
 bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
-
-# main admin - creator
-creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 
 
 class User:
@@ -912,9 +910,9 @@ class InlineButton:
                     caption = parts[5]
                     if parts[3] == 'public':
                         caption += f"\nОтправил {parts[2]}"
-                    send_to_bass_channel(self.msg['audio']['file_id'], caption)
+                    put_SNS('SendToChannelTrigger', f"{self.msg['audio']['file_id']}|{caption}")
                     delete_message(self.user_id, self.msg_id)
-                    self.answer_query('Трек успешно отправлен!', show_alert=True)
+                    self.answer_query('Трек успешно отправлен!')
                     send_reply_message(parts[0],
                                        "Ваш трек <b>успешно</b> прошёл модерацию в канал @BassBoostCollection!",
                                        parts[1])
@@ -1077,15 +1075,6 @@ def send_to_admin_share_channel(bass_file_id, caption):
     admin_share_markup = {"inline_keyboard": [[{"text": "ОТПРАВИТЬ В КАНАЛ!", 'callback_data': 'send_to_channel'}],
                                               [{"text": "УДАЛИТЬ ТРЕК!", 'callback_data': 'delete_from_admin_share_channel'}]]}
     url += f"&reply_markup={json.dumps(admin_share_markup)}"
-    requests.get(url)
-
-
-def send_to_bass_channel(bass_file_id, caption=None):
-    if caption:
-        url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['bass_channel_id'],
-                                                                                      bass_file_id, f'<b>{caption}</b>')
-    else:
-        url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(cred['bass_channel_id'], bass_file_id)
     requests.get(url)
 
 
