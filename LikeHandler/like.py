@@ -49,15 +49,65 @@ def lambda_handler(event, context):
             button.action()
         elif 'channel_post' in event and 'audio' in event['channel_post']:
             # добавляем кнопки у любому аудио в канале
-            r = update_buttons(event['channel_post'])
-            add_post_to_db(r)
+            r = update_buttons(event['channel_post']['message_id'])
+            if r['ok']:
+                msg_id = r['result']['message_id']
+                add_post_to_db(msg_id)
+        elif 'message' in event and event['message']['chat']['id'] == creator['id']:
+            message = Message(event['message'])
+            message.handler()
 
     except Exception as e:
         print(f'ERROR:{e} || EVENT:{event}')
-        send_message(creator['id'], f'ERROR:\n{e}\nEVENT:\n{event}')
+        send_message(f'ERROR:\n{e}\nEVENT:\n{event}')
 
     # в любом случае возвращаем телеграму код 200
     return {'statusCode': 200}
+
+
+class Message:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def handler(self):
+        if 'text' in self.msg:
+            text = self.msg['text']
+            if text[0] == '/':
+                self.command(text)
+            else:
+                pass
+
+    def command(self, text):
+        spl = text.split()
+        if len(spl) == 2:
+            command, arg = spl
+        else:
+            send_message("Введите аргумент!")
+            return
+
+        if command == '/add_buttons':
+            update_buttons(int(arg))
+            add_post_to_db(int(arg))
+            send_message("Кнопки добавлены!")
+
+        elif command == '/rm_buttons':
+            update_buttons(arg, -1)
+            add_post_to_db(int(arg), remove=True)
+            send_message("Кнопки убраны!")
+
+        elif command == '/sync':
+            # обновляем подключение к бд
+            mycursor, mydb = connect_db()
+            mycursor.execute("SELECT likes, dislikes FROM channel_likes WHERE msg_id = %s", (arg, ))
+            res = mycursor.fetchone()
+            if res:
+                update_buttons(arg, *res)
+                send_message("Обновлено!")
+            else:
+                send_message("Пост не найден!")
+
+        else:
+            send_message("Команда не найдена!")
 
 
 class InlineButton:
@@ -75,19 +125,28 @@ class InlineButton:
             # обновляем подключение к бд
             mycursor, mydb = connect_db()
 
-            # проверяем на наличие этого пользователя в этом посте
-            mycursor.execute("SELECT * FROM channel_likes WHERE msg_id = %s and POSITION(%s IN liked_users)",
-                             (self.msg_id, f"{self.user_id} ", ))
-            find = mycursor.fetchone()
-            if find:
-                self.answer_query(f"Вы уже оценили пост!")
-                return
-            self.answer_query(f"You {self.data} this")
+            # проверка на админа
+            if self.user_id != creator['id']:
+                # проверяем на наличие этого пользователя в этом посте
+                mycursor.execute("SELECT * FROM channel_likes WHERE msg_id = %s and POSITION(%s IN liked_users)",
+                                 (self.msg_id, f"{self.user_id} ", ))
+                find = mycursor.fetchone()
+                if find:
+                    self.answer_query(f"Вы уже оценили пост!")
+                    return
+                self.answer_query(f"You {self.data} this")
 
-            column = self.data + 's'
-            mycursor.execute(f"UPDATE channel_likes SET {column} = {column} + 1, liked_users = CONCAT(liked_users, %s, ' ') WHERE msg_id = %s",
-                             (self.user_id, self.msg_id))
-            mydb.commit()
+                column = self.data + 's'
+                mycursor.execute(f"UPDATE channel_likes SET {column} = {column} + 1, liked_users = CONCAT(liked_users, %s, ' ') WHERE msg_id = %s",
+                                 (self.user_id, self.msg_id))
+                mydb.commit()
+            else:
+                self.answer_query(f"You {self.data} this")
+                column = self.data + 's'
+                mycursor.execute(
+                    f"UPDATE channel_likes SET {column} = {column} + 1 WHERE msg_id = %s",
+                    (self.msg_id, ))
+                mydb.commit()
 
             # обновляем кол-во лайков/дизлайков
             markup = self.msg['reply_markup']['inline_keyboard'][0]
@@ -99,7 +158,7 @@ class InlineButton:
             else:
                 dislikes += 1
 
-            update_buttons(self.msg, likes, dislikes)
+            update_buttons(self.msg_id, likes, dislikes)
 
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
@@ -115,11 +174,11 @@ def like_markup(likes, dislikes):
     return {"inline_keyboard": [[{"text": f"👍 {likes}", 'callback_data': 'like'}, {"text": f"👎 {dislikes}", 'callback_data': 'dislike'}]]}
 
 
-def update_buttons(post, likes=0, dislikes=0):
-    chat_id = post['chat']['id']
-    message_id = post['message_id']
-    url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}&reply_markup={}".format(
-        chat_id, message_id, json.dumps(like_markup(likes, dislikes)))
+def update_buttons(message_id, likes=0, dislikes=0):
+    url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
+        cred['bass_channel_id'], message_id)
+    if likes >= 0:
+        url += "&reply_markup={}".format(json.dumps(like_markup(likes, dislikes)))
     r = requests.get(url).json()
     return r
 
@@ -130,22 +189,28 @@ def send_to_bass_channel(bass_file_id, caption=None):
         url += f'&caption=<b>{caption}</b>'
     url += '&reply_markup={}'.format(json.dumps(like_markup(0, 0)))
     r = requests.get(url).json()
-    add_post_to_db(r)
-
-
-def add_post_to_db(r):
     if r['ok']:
         msg_id = r['result']['message_id']
+        add_post_to_db(msg_id)
+
+
+def add_post_to_db(msg_id, remove=False):
+
         # обновляем подключение к бд
         mycursor, mydb = connect_db()
-        # добавляем этот пост в базу
-        mycursor.execute("INSERT INTO channel_likes VALUES (%s, NOW() + INTERVAL 3 HOUR, 0, 0, '')", (msg_id, ))
+
+        if not remove:
+            # добавляем этот пост в базу
+            mycursor.execute("INSERT INTO channel_likes VALUES (%s, NOW() + INTERVAL 3 HOUR, 0, 0, '')", (msg_id, ))
+        else:
+            # удаляем из базы этот пост
+            mycursor.execute("DELETE FROM channel_likes WHERE msg_id = %s", (msg_id, ))
         mydb.commit()
 
 
 # Telegram methods
-def send_message(chat_id, text, reply_markup=None):
-    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+def send_message(text, reply_markup=None):
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(creator['id'], text)
     if reply_markup:
         url += f"&reply_markup={json.dumps(reply_markup)}"
     requests.get(url)
