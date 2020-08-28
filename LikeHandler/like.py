@@ -39,7 +39,9 @@ def lambda_handler(event, context):
             else:
                 file_id = message[:-1]
                 caption = None
-            send_to_bass_channel(file_id, caption)
+            msg_id = send_to_bass_channel(file_id, caption)
+            if msg_id:
+                send_to_like_bot(file_id, msg_id)
             return
         event = json.loads(event['body'])
         print(event)
@@ -53,6 +55,7 @@ def lambda_handler(event, context):
             if r['ok']:
                 msg_id = r['result']['message_id']
                 add_post_to_db(msg_id)
+                send_to_like_bot(event['channel_post']['audio']['file_id'], msg_id)
         elif 'message' in event and event['message']['chat']['id'] == creator['id']:
             message = Message(event['message'])
             message.handler()
@@ -86,14 +89,20 @@ class Message:
             return
 
         if command == '/add_buttons':
-            update_buttons(int(arg))
-            add_post_to_db(int(arg))
+            update_buttons(arg)
+            add_post_to_db(arg)
             send_message("Кнопки добавлены!")
 
-        elif command == '/rm_buttons':
+        elif command == '/del_buttons':
             update_buttons(arg, -1)
-            add_post_to_db(int(arg), remove=True)
+            add_post_to_db(arg, remove=True)
             send_message("Кнопки убраны!")
+
+        elif command == '/del_message':
+            update_buttons(arg, -1)
+            add_post_to_db(arg, remove=True)
+            delete_message(cred['bass_channel_id'], arg)
+            send_message("Пост удалён!")
 
         elif command == '/sync':
             # обновляем подключение к бд
@@ -160,6 +169,38 @@ class InlineButton:
 
             update_buttons(self.msg_id, likes, dislikes)
 
+        elif self.data in ('add_key', 'del_key', 'sync_with_db', 'del_msg'):
+            msg_id = self.msg['caption']
+            if self.data == 'add_key':
+                update_buttons(msg_id)
+                add_post_to_db(msg_id)
+                self.answer_query("Кнопки добавлены!")
+            elif self.data == 'del_key':
+                update_buttons(msg_id, -1)
+                add_post_to_db(msg_id, remove=True)
+                self.answer_query("Кнопки убраны!")
+            elif self.data == 'sync_with_db':
+                # обновляем подключение к бд
+                mycursor, mydb = connect_db()
+                mycursor.execute("SELECT likes, dislikes FROM channel_likes WHERE msg_id = %s", (msg_id,))
+                res = mycursor.fetchone()
+                if res:
+                    update_buttons(msg_id, *res)
+                    self.answer_query("Обновлено!")
+                else:
+                    self.answer_query("Пост не найден!")
+            elif self.data == 'del_msg':
+                update_buttons(msg_id, -1)
+                add_post_to_db(msg_id, remove=True)
+                delete_message(cred['bass_channel_id'], msg_id)
+                self.answer_query("Пост удалён!")
+                delete_message(creator['id'], self.msg_id)
+
+
+
+
+
+
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
                                                                                             show_alert)
@@ -175,6 +216,7 @@ def like_markup(likes, dislikes):
 
 
 def update_buttons(message_id, likes=0, dislikes=0):
+    message_id = int(message_id)
     url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
         cred['bass_channel_id'], message_id)
     if likes >= 0:
@@ -192,9 +234,21 @@ def send_to_bass_channel(bass_file_id, caption=None):
     if r['ok']:
         msg_id = r['result']['message_id']
         add_post_to_db(msg_id)
+        return msg_id
+
+
+def send_to_like_bot(bass_file_id, orig_msg_id):
+    settings_markup = {"inline_keyboard": [[{"text": "Клавиатура❌", 'callback_data': 'del_key'}, {"text": "Клавиатура✅", 'callback_data': 'add_key'}],
+                                           [{"text": "Sync", 'callback_data': 'sync_with_db'}, {"text": "Пост❌", 'callback_data': 'del_msg'}]]}
+    url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(creator['id'], bass_file_id)
+    url += f"&caption={orig_msg_id}"
+    url += '&reply_markup={}'.format(json.dumps(settings_markup))
+    requests.get(url)
 
 
 def add_post_to_db(msg_id, remove=False):
+
+        msg_id = int(msg_id)
 
         # обновляем подключение к бд
         mycursor, mydb = connect_db()
