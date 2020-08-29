@@ -41,7 +41,7 @@ def lambda_handler(event, context):
                 caption = None
             msg_id = send_to_bass_channel(file_id, caption)
             if msg_id:
-                send_to_like_bot(file_id, msg_id)
+                send_to_like_bot(msg_id)
             return
         event = json.loads(event['body'])
         print(event)
@@ -49,13 +49,16 @@ def lambda_handler(event, context):
         if 'callback_query' in event.keys():
             button = InlineButton(event)
             button.action()
-        elif 'channel_post' in event and 'audio' in event['channel_post']:
-            # добавляем кнопки у любому аудио в канале
-            r = update_buttons(event['channel_post']['message_id'])
-            if r['ok']:
-                msg_id = r['result']['message_id']
-                add_post_to_db(msg_id)
-                send_to_like_bot(event['channel_post']['audio']['file_id'], msg_id)
+        elif 'channel_post' in event:
+            if 'audio' in event['channel_post']:
+                # добавляем кнопки у любому аудио в канале
+                r = update_buttons(event['channel_post']['message_id'])
+                if r['ok']:
+                    msg_id = r['result']['message_id']
+                    add_post_to_db(msg_id)
+                    send_to_like_bot(msg_id)
+            else:
+                send_to_like_bot(event['channel_post']['message_id'])
         elif 'message' in event and event['message']['chat']['id'] == creator['id']:
             message = Message(event['message'])
             message.handler()
@@ -170,7 +173,7 @@ class InlineButton:
             update_buttons(self.msg_id, likes, dislikes)
 
         elif self.data in ('add_key', 'del_key', 'sync_with_db', 'del_msg'):
-            msg_id = self.msg['caption']
+            msg_id = self.msg['text']
             if self.data == 'add_key':
                 update_buttons(msg_id)
                 add_post_to_db(msg_id)
@@ -195,11 +198,7 @@ class InlineButton:
                 delete_message(cred['bass_channel_id'], msg_id)
                 self.answer_query("Пост удалён!")
                 delete_message(creator['id'], self.msg_id)
-
-
-
-
-
+                delete_message(creator['id'], self.msg['reply_to_message']['message_id'])
 
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
@@ -237,11 +236,17 @@ def send_to_bass_channel(bass_file_id, caption=None):
         return msg_id
 
 
-def send_to_like_bot(bass_file_id, orig_msg_id):
+def send_to_like_bot(orig_msg_id):
+    url = URL + "forwardMessage?chat_id={}&from_chat_id={}&message_id={}".format(creator['id'], cred['bass_channel_id'],
+                                                                                 orig_msg_id)
+    r = requests.get(url).json()
+    if not r['ok']:
+        send_message(creator['id'], "ERROR with formard msg")
+
+    reply_msg_id = r['result']['message_id']
     settings_markup = {"inline_keyboard": [[{"text": "Клавиатура❌", 'callback_data': 'del_key'}, {"text": "Клавиатура✅", 'callback_data': 'add_key'}],
-                                           [{"text": "Sync", 'callback_data': 'sync_with_db'}, {"text": "Пост❌", 'callback_data': 'del_msg'}]]}
-    url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(creator['id'], bass_file_id)
-    url += f"&caption={orig_msg_id}"
+                                           [{"text": "Sync🔄", 'callback_data': 'sync_with_db'}, {"text": "Пост❌", 'callback_data': 'del_msg'}]]}
+    url = URL + "sendMessage?chat_id={}&text={}&reply_to_message_id={}&parse_mode=HTML".format(creator['id'], orig_msg_id, reply_msg_id)
     url += '&reply_markup={}'.format(json.dumps(settings_markup))
     requests.get(url)
 
