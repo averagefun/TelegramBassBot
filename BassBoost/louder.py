@@ -156,7 +156,7 @@ def main_audio(filename, chat_id, format_, bass, dur=None, start_b=None):
         sample = sample[start_b * 1000:]
 
     attenuate_db = 0
-    accentuate_db = 6 * (bass+1) ** 1.1
+    accentuate_db = 6 * (bass+1) ** 1.2
 
     filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), bass))
     combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
@@ -173,7 +173,7 @@ def bass_line_freq(track, bass):
     est_mean = np.mean(sample_track)
     # a-value
     est_std = 3 * np.std(sample_track) / (math.sqrt(2))
-    bass_factor = int(round((est_std - est_mean) * 0.15 * (bass + 1) ** 1.1))
+    bass_factor = int(round((est_std - est_mean) * 0.15 * (bass + 1) ** 1.2))
     return bass_factor
 
 

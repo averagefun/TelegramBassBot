@@ -46,8 +46,9 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
 if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = ['Лайтово🔈', 'Средняя прожарка🔉', 'Долбит нормально🔊', 'Минус уши сразу📢']
-bass_markup = {'keyboard': [[level[0]], [level[1]], [level[2]], [level[3]]], 'one_time_keyboard': True,
+level = {'Средняя прожарка🔉' : 2, 'Долбит нормально🔊': 3, 'Минус уши сразу📢': 4, "Опасно для жизни⛔️": 10}
+bass_name = tuple(level.keys())
+bass_markup = {'keyboard': [[bass_name[0]], [bass_name[1]], [bass_name[2]], [bass_name[3]]], 'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 
@@ -802,7 +803,7 @@ class User:
         elif self.status == "wait_bass_level":
             if self.text in level:
                 # уровень баса в словах >> цифры
-                l = level.index(self.text)
+                l = level[self.text]
                 mycursor.execute('UPDATE bass_requests SET bass_level = %s WHERE id = %s',
                                  (l, self.id))
                 mydb.commit()
