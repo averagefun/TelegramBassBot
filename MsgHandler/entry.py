@@ -46,9 +46,10 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
 if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = {'Средняя прожарка🔉' : 2, 'Долбит нормально🔊': 3, 'Минус уши сразу📢': 4, "Опасно для жизни⛔️": 10}
+level = {"🟢7.5db": 1.2, "🔵15db": 2.5, "🟣24db": 4, "🟡36db": 6, "🔴78db️": 13}
 bass_name = tuple(level.keys())
-bass_markup = {'keyboard': [[bass_name[0]], [bass_name[1]], [bass_name[2]], [bass_name[3]]], 'one_time_keyboard': True,
+bass_markup = {'keyboard': [[bass_name[0], bass_name[1]], [bass_name[2], bass_name[3]], [bass_name[4]]],
+               'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 
@@ -602,24 +603,20 @@ class User:
 
         if 'caption' in message:
             caption = message['caption']
-            if caption.isdigit():
-                if int(caption) in [1, 2, 3, 4]:
-                    # заполняем уровень баса
-                    mycursor.execute("UPDATE bass_requests SET bass_level = %s", (int(caption) - 1, ))
-                    mydb.commit()
+            if caption.isdigit() and int(caption) in range(1, 6):
+                # заполняем уровень баса
+                mycursor.execute("UPDATE bass_requests SET bass_level = %s", (list(level.values())[int(caption)-1], ))
+                mydb.commit()
 
-                    # получаем длительность файла
-                    mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
-                    duration = mycursor.fetchone()[0]
+                # получаем длительность файла
+                mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
+                duration = mycursor.fetchone()[0]
 
-                    # выполняем автообрезание
-                    self.auto_cut(duration)
+                # выполняем автообрезание
+                self.auto_cut(duration)
 
-                    self.send_req_to_bass()
-                    return
-                else:
-                    send_message(self.id, "Описание файла не распознано.\nУказывайте уровень баса\nот 1 до 4!")
-                    return
+                self.send_req_to_bass()
+                return
 
         send_message(self.id,
                      'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
