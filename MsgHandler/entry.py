@@ -46,9 +46,8 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
 if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = {"🟢7.5db": 1.2, "🔵15db": 2.5, "🟣24db": 4, "🟡36db": 6, "🔴78db️": 13}
-bass_name = tuple(level.keys())
-bass_markup = {'keyboard': [[bass_name[0], bass_name[1]], [bass_name[2], bass_name[3]], [bass_name[4]]],
+level = ["🔈Bass Low", "🔊Bass High", "📣Earrape Low", "📢Earrape High️"]
+bass_markup = {'keyboard': [[level[0], level[2]], [level[1], level[3]]],
                'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
@@ -89,6 +88,7 @@ class User:
             # проверяем на изменённый ник
             if self.username != self.user_info[2]:
                 mycursor.execute("UPDATE users SET username = %s WHERE id = %s", (self.username, self.id))
+                mydb.commit()
 
             # проверяем, закончилась ли роль
             mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s and (NOW() + INTERVAL 3 HOUR) >= role_end)",
@@ -153,7 +153,7 @@ class User:
 
     def commands(self):
         # команды по ролям
-        commands_list = {'standard': ['/start', '/help', '/bug', '/stats', '/cancel', '/pay', '/buy', '/commands'],
+        commands_list = {'standard': ['/start', '/help', '/stats', '/cancel', '/pay', '/buy', '/commands'],
                          'premium': [],
                          'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
         # команды по оплате
@@ -162,8 +162,8 @@ class User:
         text = row_text[0].split()
         command = text[0]
 
-        # если admin - делим всё сообщение на 2 аргумента!
         if self.role == 'admin':
+            # если admin - делим всё сообщение на 2 аргумента!
             if len(text) == 1:
                 arg, arg2 = None, None
             elif len(text) == 2:
@@ -177,6 +177,7 @@ class User:
                 send_message(self.id, 'Введите второй аргумент с новой строки!')
                 return
         else:
+            # если обычный пользователь - то только 1 аргумент
             arg = ' '.join(self.text.split()[1:])
             arg2 = None
 
@@ -207,14 +208,6 @@ class User:
                 self.start_msg()
             else:
                 send_message(self.id, "Бот уже запущен и ожидает\nфайл/сообщение!\n(/help - помощь по боту)")
-            return
-
-        # сообщение о баге
-        elif command == '/bug' and arg:
-            send_message(self.id, 'Спасибо, что сообщили о баге!')
-            admins = get_users('admin')
-            for admin in admins:
-                send_message(admin, f'Bug report from @{self.username}\n' + arg)
             return
 
         # удаление запроса
@@ -601,23 +594,6 @@ class User:
             self.id, audio['file_id'], format_, duration, title))
         mydb.commit()
 
-        if 'caption' in message:
-            caption = message['caption']
-            if caption.isdigit() and int(caption) in range(1, 6):
-                # заполняем уровень баса
-                mycursor.execute("UPDATE bass_requests SET bass_level = %s", (list(level.values())[int(caption)-1], ))
-                mydb.commit()
-
-                # получаем длительность файла
-                mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
-                duration = mycursor.fetchone()[0]
-
-                # выполняем автообрезание
-                self.auto_cut(duration)
-
-                self.send_req_to_bass()
-                return
-
         send_message(self.id,
                      'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
                      '\n(обрезка и прочее...):',
@@ -800,7 +776,7 @@ class User:
         elif self.status == "wait_bass_level":
             if self.text in level:
                 # уровень баса в словах >> цифры
-                l = level[self.text]
+                l = level.index(self.text)
                 mycursor.execute('UPDATE bass_requests SET bass_level = %s WHERE id = %s',
                                  (l, self.id))
                 mydb.commit()
