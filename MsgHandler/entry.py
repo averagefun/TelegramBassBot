@@ -46,8 +46,8 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
 if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = ["🔈Bass Low", "🔊Bass High", "📣Earrape Low", "📢Earrape High️"]
-bass_markup = {'keyboard': [[level[0], level[2]], [level[1], level[3]]],
+level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
+bass_markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
                'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}

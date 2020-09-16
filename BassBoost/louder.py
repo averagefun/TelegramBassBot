@@ -31,9 +31,6 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 # Доступные форматы
 formats_ = ('mp3', 'ogg', 'mp4')
 
-# Bass & Earrape
-level = [["BassBoosted", 2, 0.005], ["BassBoosted", 8, 0.015], ["Earrape", 24, 0.6], ["Earrape", 78, 0.2]]
-
 shutil.copy(r'/opt/ffmpeg/ffmpeg', r'/tmp/ffmpeg')
 shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
 os.chmod(r'/tmp/ffmpeg', 755)
@@ -91,13 +88,17 @@ def lambda_handler(event, context):
     with open(f'/tmp/{filename1}', 'wb') as file:
         file.write(r.content)
 
+    # получаем параметры для преобразования файла из таблицы
+    mycursor.execute("SELECT * FROM bass_levels WHERE num = %s", (bass_level, ))
+    params = mycursor.fetchone()[1:]     # name, att_db, acc_db, bass_factor
+
     # преобразование файла >> сохрание в tmp под форматом mp3
     filename2 = f'{chat_id}_{time_}.mp3'
     # успешность декодирования файла ffmpeg
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
         try:
-            combined, text, share_markup = main_audio(filename1, chat_id, format_, bass_level, duration, start_bass)
+            combined, text, share_markup = main_audio(filename1, chat_id, format_, params, duration, start_bass)
             combined.export(file, format="mp3")
         except Exception:
             success = False
@@ -119,7 +120,8 @@ def lambda_handler(event, context):
         url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
-            data = {'chat_id': chat_id, 'title': f'{file_name} {level[bass_level][0]}', 'reply_markup': json.dumps(share_markup)}
+            be = 'BassBoosted' if bass_level < 3 else 'Earrape'
+            data = {'chat_id': chat_id, 'title': f'{file_name} {be}', 'reply_markup': json.dumps(share_markup)}
             if file_performer:
                 data['performer'] = file_performer
             r = requests.post(url, files=files, data=data)
@@ -136,12 +138,12 @@ def lambda_handler(event, context):
         username = mycursor.fetchone()[0]
 
         bass_file_id = json.loads(r.content)['result']['audio']['file_id']
-        send_to_channel(file_id, bass_file_id, username)
+        send_to_channel(file_id, bass_file_id, username, params[0])
     else:
         send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
 
 
-def main_audio(filename, chat_id, format_, bass_level, dur=None, start_b=None):
+def main_audio(filename, chat_id, format_, params, dur=None, start_b=None):
     sample = AudioSegment.from_file(f'/tmp/{filename}', format=format_)
 
     # обрезка
@@ -158,10 +160,10 @@ def main_audio(filename, chat_id, format_, bass_level, dur=None, start_b=None):
         start_ = sample[:start_b * 1000]
         sample = sample[start_b * 1000:]
 
-    attenuate_db = 0
-    accentuate_db = level[bass_level][1]
+    attenuate_db = params[1]
+    accentuate_db = params[2]
 
-    filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), bass_level))
+    filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), params[3]))
     combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
 
     if start_b:
@@ -170,13 +172,13 @@ def main_audio(filename, chat_id, format_, bass_level, dur=None, start_b=None):
     return combined, text, share_markup
 
 
-def bass_line_freq(track, bass_level):
+def bass_line_freq(track, fact):
     sample_track = list(track)
     # c-value
     est_mean = np.mean(sample_track)
     # a-value
     est_std = 3 * np.std(sample_track) / (math.sqrt(2))
-    bass_factor = int(round((est_std - est_mean) * level[bass_level][2]))
+    bass_factor = int(round((est_std - est_mean) * fact))
     return bass_factor
 
 
@@ -244,10 +246,10 @@ def send_message(chat_id, text, reply_markup=None):
     return r
 
 
-def send_to_channel(file_id, bass_file_id, username):
+def send_to_channel(file_id, bass_file_id, username, bass_level):
     url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_all_channel_id'], file_id, f'<b>@{username}</b>')
     requests.get(url)
-    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_all_channel_id'], bass_file_id, f'<b>@{username} BASS</b>')
+    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_all_channel_id'], bass_file_id, f'<b>@{username} {bass_level}</b>')
     requests.get(url)
 
 
