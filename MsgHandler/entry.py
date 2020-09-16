@@ -682,7 +682,7 @@ class User:
 
                 mycursor.execute("UPDATE users SET status_ = 'wait_bass_level' WHERE id = %s", (self.id,))
                 mydb.commit()
-                send_message(self.id, '<b>Выбери уровень баса:</b>', bass_markup)
+                send_message(self.id, '<b>Выбери уровень усиления трека:</b>', bass_markup)
             else:
                 send_message(self.id, 'Нажмите одну из кнопок на клавиатуре!')
 
@@ -698,7 +698,7 @@ class User:
                 self.auto_cut(duration)
 
                 send_message(self.id,
-                             '<b>Теперь укажи, с какой секунды начинать усиливать бас.</b>\nПример "5.2" - с 5.2 секунды.',
+                             '<b>Теперь укажи, с какой секунды начинать преобразовывать трек. </b>Пример "5.2" - с 5.2 секунды.',
                              startbass_markup)
             else:
                 s = self.text.split()
@@ -722,7 +722,7 @@ class User:
                                      (f0, f1, self.id))
                     mydb.commit()
                     send_message(self.id,
-                                 'Всё чётко! <b>Теперь укажи, с какой секунды начинается бас.</b>' +
+                                 'Всё чётко! <b>Теперь укажи, с какой секунды начинать преобразовывать трек.</b>' +
                                   '\nПример: "5.2" - с 5.2 секунды.\n<i>Указывай время с начала уже обрезанной песни!</i>',
                                   startbass_markup)
                 else:
@@ -767,7 +767,7 @@ class User:
                                  startbass_markup)
                     return
 
-            send_message(self.id, '<b>Выбери уровень баса:</b>', bass_markup)
+            send_message(self.id, '<b>Выбери уровень усиления трека:</b>', bass_markup)
             # обновляем статус
             mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
             mydb.commit()

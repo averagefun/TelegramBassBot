@@ -16,6 +16,23 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `bass_levels`
+--
+
+DROP TABLE IF EXISTS `bass_levels`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `bass_levels` (
+  `num` tinyint(4) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `att_db` smallint(6) NOT NULL,
+  `acc_db` smallint(6) NOT NULL,
+  `bass_factor` float(7,3) NOT NULL,
+  PRIMARY KEY (`num`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `bass_requests`
 --
 
@@ -36,6 +53,23 @@ CREATE TABLE `bass_requests` (
   `req_id` int(11) DEFAULT NULL,
   UNIQUE KEY `id` (`id`),
   UNIQUE KEY `req_id` (`req_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `channel_likes`
+--
+
+DROP TABLE IF EXISTS `channel_likes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `channel_likes` (
+  `msg_id` int(11) NOT NULL,
+  `post_date` timestamp NULL DEFAULT NULL,
+  `likes` smallint(6) DEFAULT NULL,
+  `dislikes` smallint(6) DEFAULT NULL,
+  `liked_users` text,
+  PRIMARY KEY (`msg_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -62,7 +96,7 @@ DROP TABLE IF EXISTS `payment_param`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `payment_param` (
   `name_param` varchar(255) NOT NULL,
-  `value_param` smallint(6) DEFAULT NULL,
+  `value_param` float(5,1) DEFAULT NULL,
   UNIQUE KEY `name_param` (`name_param`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -131,14 +165,14 @@ CREATE TABLE `users` (
   `username` varchar(255) DEFAULT NULL,
   `reg_date` timestamp NULL DEFAULT NULL,
   `role_` varchar(127) NOT NULL,
-  `balance` float NOT NULL,
+  `balance` float(5,1) DEFAULT NULL,
   `status_` varchar(65) NOT NULL,
   `total` int(11) DEFAULT NULL,
   `last_query` timestamp NULL DEFAULT NULL,
   `role_end` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`num`),
   UNIQUE KEY `id` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=147 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=443 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -150,4 +184,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-06-22 17:37:32
+-- Dump completed on 2020-09-16 19:49:50
