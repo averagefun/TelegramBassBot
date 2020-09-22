@@ -62,7 +62,10 @@ def lambda_handler(event, context):
     file_name = req[3]
     file_split = file_name.split('|')
     if len(file_split) == 2:
-        file_name = f"{file_split[0]} - {file_split[1]}"
+        if file_split[0] == '@AudioBassBot':
+            file_name = file_split[1] + ' +'
+        else:
+            file_name = f"{file_split[0]} - {file_split[1]}"
 
     duration = req[5:7]
     start_bass = req[7]
