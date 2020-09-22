@@ -51,6 +51,83 @@ bass_markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2
                'one_time_keyboard': True,
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
+start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
+                                         [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
+
+
+####################
+#  lambda_handler  #
+####################
+def lambda_handler(event, context):
+    # обрабатываем любые исключения
+    try:
+        event = json.loads(event['body'])
+        print(event)
+        msg_handler(event)
+    except Exception as e:
+        print(f'ERROR:{e} || EVENT:{event}')
+        send_message(creator['id'], f'ERROR:\n{e}\nEVENT:\n{event}')
+
+    # в любом случае возвращаем телеграму код 200
+    return {'statusCode': 200}
+
+
+def msg_handler(event):
+    global mycursor
+    global mydb
+    # обновляем подключение к бд
+    mycursor, mydb = connect_db()
+
+    # проверка на нажатие инлайн кнопки
+    if 'callback_query' in event.keys():
+        button = InlineButton(event)
+        button.action()
+        return
+    elif 'channel_post' in event and event['channel_post']['chat']['id'] == int(cred['mail_channel_id']):
+        url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
+            cred['mail_channel_id'], event['channel_post']['message_id'])
+        url += "&reply_markup={}".format(json.dumps(start_mail_markup))
+        r = requests.get(url).json()
+        if r['ok']:
+            msg_id = r['result']['message_id']
+            mycursor.execute("INSERT INTO mail_requests (msg_id) VALUES (%s)", (msg_id, ))
+            mydb.commit()
+        else:
+            send_message(cred['mail_channel_id'], "ERROR!\nCan't add keyboard.")
+        return
+
+    # инициализация юзера
+    user = User(event)
+    # проверка на успешную инициализацию
+    if not user.init_success:
+        return
+
+    # проверка на бан
+    if user.role == 'ban':
+        text = get_text_from_db('ban')
+        send_message(user.id, text)
+        return
+
+    # debug mode
+    if user.role_active == 0:
+        if user.status == 'start':
+            user.start_msg()
+        else:
+            text = get_text_from_db('sleep')
+            send_message(user.id, text)
+            send_sticker(user.id, 'sleep')
+        return
+
+    # проверяем: это сообщение или файл - находим общие ключи
+    c = list(set(event['message'].keys()) & tags)
+
+    # юзер залил файл
+    if c:
+        user.file(c[0], event['message'])
+
+    # Юзер написал текст
+    else:
+        user.msg()
 
 
 class User:
@@ -155,7 +232,7 @@ class User:
         # команды по ролям
         commands_list = {'standard': ['/start', '/help', '/stats', '/cancel', '/pay', '/buy', '/commands'],
                          'premium': [],
-                         'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price', '/update']}
+                         'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price']}
         # команды по оплате
         pays_command = ['/pay', '/buy']
         row_text = self.text.split('\n')
@@ -433,7 +510,7 @@ class User:
                     blocked = []
                     for chat_id in id_for_msg:
                         r = send_message(chat_id, text)
-                        time.sleep(0.04)
+                        time.sleep(0.05)
                         # проверяем на успешную отправку
                         if not r['ok']:
                             if r['error_code'] == 403:
@@ -531,15 +608,6 @@ class User:
                     send_message_not_parse(self.id, value_param)
             else:
                 send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
-
-        # рассылка всем пользователям кроме заблокировавших
-        elif command == '/update':
-            if arg == 'confirm':
-                put_SNS('MailingTrigger', 'update')
-            else:
-                mycursor.execute("SELECT text FROM msgs WHERE name = 'update'")
-                text = mycursor.fetchone()[0]
-                send_message(self.id, text)
 
     def file(self, tag, message):
         # проверка на статус юзера
@@ -805,6 +873,17 @@ class InlineButton:
         self.call_id = call['id']
         self.msg_id = self.msg['message_id']
 
+    def edit_buttons(self, status, count=0):
+        url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
+            cred['mail_channel_id'], self.msg_id)
+        text = {"Sending": ["🟢🔄", "stop"], "Waiting": ["🟢️", "stop"],
+                "Stopped": ["🟠", "start"], "Finished": ["✅", "finished"]}[status]
+        buttons = {"inline_keyboard": [[{"text": f"{status} {count} {text[0]}",
+                                         'callback_data': f'{text[1]}_mailing'}],
+                                       [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
+        url += "&reply_markup={}".format(json.dumps(buttons))
+        return requests.get(url).json()
+
     def action(self):
         # выполняем различные действия в зависимости от нажатия кнопки
         # генерируем оплату
@@ -868,10 +947,7 @@ class InlineButton:
         elif self.data in ('anon_share', 'name_share'):
             caption = f"{self.user_id}|{self.msg_id}|@{self.msg['chat']['username']}|"
             caption += "anon" if self.data == 'anon_share' else "public"
-            caption += f"|reason|<b>"
-            if 'performer' in self.msg['audio']:
-                caption += f"{self.msg['audio']['performer']} - "
-            caption += f"{self.msg['audio']['title']}</b>"
+            caption += f"|reason|<b>{self.msg['audio']['title']}</b>"
             send_to_admin_share_channel(self.msg['audio']['file_id'], caption)
             # удаляем клавиатуру
             edit_markup(self.user_id, self.msg_id)
@@ -909,28 +985,56 @@ class InlineButton:
                 delete_message(self.user_id, self.msg_id)
                 self.answer_query('Успешно удалён!')
 
-        # товары
-        else:
+        elif 'mailing' in self.data:
+            if self.data == 'finished_mailing':
+                self.answer_query("Эта рассылка уже завершена!", show_alert=True)
+                return
+            elif self.data == 'delete_mailing':
+                mycursor.execute("DELETE FROM mail_requests WHERE msg_id = %s", (self.msg_id, ))
+                mydb.commit()
+                self.answer_query("Рассылка удалена!")
+                delete_message(self.user_id, self.msg_id)
+                return
+
+            mycursor.execute("SELECT count FROM mail_requests WHERE msg_id = %s", (self.msg_id, ))
+            count = mycursor.fetchone()[0]
+            if self.data == 'start_mailing':
+                q = "UPDATE mail_requests SET active = 1 WHERE msg_id = %s"
+                self.answer_query("Рассылка включена!")
+                self.edit_buttons("Waiting", count)
+            elif self.data == 'stop_mailing':
+                q = "UPDATE mail_requests SET active = 0 WHERE msg_id = %s"
+                self.answer_query("Рассылка выключена!")
+                self.edit_buttons("Stopped", count)
+            mycursor.execute(q, (self.msg_id, ))
+            mydb.commit()
+
+        # premium товары
+        elif 'premium' in self.data:
             mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
             balance = mycursor.fetchone()[0]
             premium_prod = {'premium_day': 1, 'premium_week': 7, 'premium_month': 30}
-            if self.data in premium_prod:
-                mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
-                price = mycursor.fetchone()[0]
-                if balance >= price:
-                    mycursor.execute(
-                        """UPDATE users SET balance = balance - %s, role_ = 'premium',
-                        role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
-                        WHERE id = %s""",
-                        (price, premium_prod[self.data], premium_prod[self.data], self.user_id))
-                    mydb.commit()
-                    self.answer_query("Успешно!")
-                    mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
-                    send_message(self.user_id,
-                                 f"Вы успешно приобрели подписку premium до {mycursor.fetchone()[0]} по МСК.")
+            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
+            price = mycursor.fetchone()[0]
+            if balance >= price:
+                mycursor.execute(
+                    """UPDATE users SET balance = balance - %s, role_ = 'premium',
+                    role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
+                    WHERE id = %s""",
+                    (price, premium_prod[self.data], premium_prod[self.data], self.user_id))
+                mydb.commit()
+                self.answer_query("Успешно!")
+                mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
+                send_message(self.user_id,
+                             f"Вы успешно приобрели подписку premium до {mycursor.fetchone()[0]} по МСК.")
 
-                else:
-                    self.answer_query("Недостаточно средств на балансе!", show_alert=True)
+            else:
+                self.answer_query("Недостаточно средств на балансе!", show_alert=True)
+
+        else:
+            # ошибочная кнопка
+            self.answer_query_no_text()
+            send_message(creator['id'], f'ERROR with inline button:\nMESSAGE:\n{self.msg}')
 
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
@@ -942,69 +1046,9 @@ class InlineButton:
         requests.get(url)
 
 
-def msg_handler(event):
-    global mycursor
-    global mydb
-    # обновляем подключение к бд
-    mycursor, mydb = connect_db()
-
-    # проверка на нажатие инлайн кнопки
-    if 'callback_query' in event.keys():
-        button = InlineButton(event)
-        button.action()
-        return
-
-    # инициализация юзера
-    user = User(event)
-    # проверка на успешную инициализацию
-    if not user.init_success:
-        return
-
-    # проверка на бан
-    if user.role == 'ban':
-        text = get_text_from_db('ban')
-        send_message(user.id, text)
-        return
-
-    # debug mode
-    if user.role_active == 0:
-        if user.status == 'start':
-            user.start_msg()
-        else:
-            text = get_text_from_db('sleep')
-            send_message(user.id, text)
-            send_sticker(user.id, 'sleep')
-        return
-
-    # проверяем: это сообщение или файл - находим общие ключи
-    c = list(set(event['message'].keys()) & tags)
-
-    # юзер залил файл
-    if c:
-        user.file(c[0], event['message'])
-
-    # Юзер написал текст
-    else:
-        user.msg()
-
-
-####################
-#  lambda_handler  #
-####################
-def lambda_handler(event, context):
-    # обрабатываем любые исключения
-    try:
-        event = json.loads(event['body'])
-        msg_handler(event)
-    except Exception as e:
-        print(f'ERROR:{e} || EVENT:{event}')
-        send_message(creator['id'], f'ERROR:\n{e}\nEVENT:\n{event}')
-
-    # в любом случае возвращаем телеграму код 200
-    return {'statusCode': 200}
-
-
+##################
 # Telegram methods
+##################
 def send_message(chat_id, text, reply_markup=None):
     url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
     if reply_markup:

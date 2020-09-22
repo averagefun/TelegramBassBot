@@ -15,11 +15,6 @@ Resources:
     Properties:
       TopicName: "BassBoostTrigger"
 
-  MailingTrigger:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: "MailingTrigger"
-
   SendToChannelTrigger:
     Type: AWS::SNS::Topic
     Properties:
@@ -57,9 +52,6 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName:
               !GetAtt BassBoostTrigger.TopicName
-        - SNSPublishMessagePolicy:
-            TopicName:
-              !GetAtt MailingTrigger.TopicName
         - SNSPublishMessagePolicy:
             TopicName:
               !GetAtt SendToChannelTrigger.TopicName
@@ -118,11 +110,10 @@ Resources:
       EventInvokeConfig:
         MaximumRetryAttempts: 0
       Events:
-        Mailing:
-          Type: SNS
+        Mail:
+          Type: Schedule
           Properties:
-            Topic:
-              Ref: MailingTrigger
+            Schedule: cron(0/30 * ? * * *)
 
   LikeHandler:
     Type: AWS::Serverless::Function

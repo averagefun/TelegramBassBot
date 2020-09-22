@@ -1,6 +1,8 @@
 import json
+import os
 import boto3
 import requests
+import time
 import mysql.connector
 
 
@@ -39,7 +41,12 @@ def lambda_handler(event, context):
             else:
                 file_id = message[:-1]
                 caption = None
-            msg_id = send_to_bass_channel(file_id, caption)
+
+            if caption and caption[-1] == '$':
+                msg_id = edit_and_send_to_channel(file_id, caption[:-1])
+            else:
+                msg_id = send_to_channel(file_id, caption)
+
             if msg_id:
                 send_to_like_bot(msg_id)
             return
@@ -224,7 +231,35 @@ def update_buttons(message_id, likes=0, dislikes=0):
     return r
 
 
-def send_to_bass_channel(bass_file_id, caption=None):
+def edit_and_send_to_channel(bass_file_id, caption):
+    # проверка на изменение имени файла
+    file_path = get_file(bass_file_id)['result']['file_path']
+
+    filename = f'{round(time.time())}.mp3'
+    # скачиваем файл с телеги в tmp
+    r = requests.get(
+        'https://api.telegram.org/file/bot{}/{}'.format(Token, file_path))
+    with open(f'/tmp/{filename}', 'wb') as file:
+        file.write(r.content)
+
+    # отправляем файл с переименованым названием
+    url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
+    with open(f'/tmp/{filename}', 'rb') as file:
+        files = {'audio': file}
+        data = {'chat_id': cred['bass_channel_id'], 'title': caption,
+                'performer': "@AudioBassBot", 'reply_markup': json.dumps(like_markup(0, 0))}
+        r = requests.post(url, files=files, data=data).json()
+
+    # удаляем BassBoost файл
+    os.remove(f'/tmp/{filename}')
+
+    if r['ok']:
+        msg_id = r['result']['message_id']
+        add_post_to_db(msg_id)
+        return msg_id
+
+    
+def send_to_channel(bass_file_id, caption):
     url = URL + "sendAudio?chat_id={}&audio={}&parse_mode=HTML".format(cred['bass_channel_id'], bass_file_id)
     if caption:
         url += f'&caption=<b>{caption}</b>'
@@ -278,6 +313,12 @@ def send_message(text, reply_markup=None):
 def delete_message(chat_id, message_id):
     url = URL + "deleteMessage?chat_id={}&message_id={}".format(chat_id, message_id)
     requests.get(url)
+
+
+def get_file(file_id):
+    url = URL + "getFile?file_id={}".format(file_id)
+    r = requests.get(url)
+    return json.loads(r.content)
 
 
 # AWS methods

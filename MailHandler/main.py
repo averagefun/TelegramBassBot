@@ -15,15 +15,7 @@ def get_cred():
     cred = dict(zip(keys, values))
     return cred
 
-
 cred = get_cred()
-
-# check for correct value
-if cred['creator_id'].isdigit():
-    cred['creator_id'] = int(cred['creator_id'])
-
-# main admin - creator
-creator = {'id': cred['creator_id'], 'username': cred['creator_username']}
 
 # TelegramBot
 Token = cred['bot_token']
@@ -31,57 +23,138 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 
 
 def lambda_handler(event, context):
+
+    print(event)
+
     global mycursor
     global mydb
     # обновляем подключение к бд
     mycursor, mydb = connect_db()
 
-    print(event)
+    # проверяем на наличие очереди msg_id, last_user, count
+    mycursor.execute("SELECT msg_id, last_user, count FROM mail_requests WHERE msg_id = "
+                     "(SELECT MIN(msg_id) FROM mail_requests WHERE active = 1)")
+    r = mycursor.fetchone()
+    if not r:
+        return
+    msg_id, last_user, count = r
+    mycursor.execute("SELECT id FROM users WHERE role_ != 'block_by_user' and num > %s ORDER BY num", (last_user, ))
+    ids = mycursor.fetchall()
+    if not ids:
+        return update(msg_id, 0)
+    mailing([chat_id[0] for chat_id in ids], msg_id)
 
-    # проверяем на SNS событие
-    if "Records" in event.keys():
-        message = event['Records'][0]['Sns']['Message']
-        # рассылка всем пользователям
-        if json.loads(message) == 'update':
-            mycursor.execute("SELECT id FROM users WHERE role_ != 'block_by_user' ORDER BY num")
-            ids = mycursor.fetchall()
-            user_id_list = [chat_id[0] for chat_id in ids]
-            text = get_text_from_db('update')
 
-            # проходимся по пользователям
-            k = 0
-            blocked = []
-            for chat_id in user_id_list:
-                r = send_message(chat_id, text)
-                time.sleep(0.04)
-                # проверяем на успешную отправку
-                if not r['ok']:
-                    if r['error_code'] == 403:
-                        # 403 - пользователь заблокировал бота
-                        blocked.append(chat_id)
-                    else:
-                        # прочая ошибка
-                        send_message(creator['id'], f"!!! <b>ERROR</b> на {k+1} человеке (id: {chat_id}):\n{r['description']}")
-                        return
-                else:
-                    k += 1
-                    if k % 30 == 0:
-                        # каждые 30 сообщений - отправляем отчёт
-                        send_message(creator['id'], f'Отправлено: <b>{k}</b> сообщений!\nПоследний: {chat_id}.')
-                        time.sleep(0.1)
+def mailing(user_id_list, msg_id):
+    start_func = int(time.time())
 
-            n = len(blocked)
-            if n > 0:
-                # обновляем заблокированных пользователей
-                blocked = ', '.join(map(str, blocked))
-                # update block users
-                mycursor.execute(f"UPDATE users SET role_ = 'block_by_user' WHERE id in ({blocked})")
-                mydb.commit()
+    # получаем текст или фотографию
+    r = edit_buttons(msg_id, 'Sending')
+    if not r['ok']:
+        send_reply_message(cred['mail_channel_id'], "Error with get message info!", msg_id)
+        return
 
-                mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
-                mydb.commit()
+    photo = text = None
+    if 'text' in r['result']:
+        text = r['result']['text']
+    elif 'photo' in r['result']:
+        if 'caption' in r['result']:
+            text = r['result']['caption']
+        photo = r['result']['photo'][-1]['file_id']
+    else:
+        send_reply_message(cred['mail_channel_id'], "Error: type of message must be text or photo", msg_id)
+        return
 
-            send_message(creator['id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
+    # проходимся по пользователям
+    a = s = 0
+    chat_id = 0
+    blocked = []
+    for chat_id in user_id_list:
+        a += 1
+        if photo:
+            r = send_photo(chat_id, photo, text)
+        else:
+            r = send_message(chat_id, text)
+        time.sleep(0.05)
+        # проверяем на успешную отправку
+        if not r['ok']:
+            if r['error_code'] == 403:
+                # 403 - пользователь заблокировал бота
+                blocked.append(chat_id)
+            else:
+                # прочая ошибка
+                send_message(cred['mail_channel_id'], f"!!! <b>ERROR</b>\nid: {chat_id}):\n{r['description']}")
+                return
+        else:
+            s += 1
+        if int(time.time()) - start_func >= 0:
+            break
+        elif a % 29 == 0:
+            # каждые 30 сообщений - пауза побольше
+            time.sleep(0.15)
+
+    # обновляем очередь и сообщение в канале
+    if a != len(user_id_list) and chat_id:
+        update(msg_id, s, chat_id)
+    else:
+        update(msg_id, s)
+
+    # обновляем заблокированных пользователей
+    n = len(blocked)
+    if n > 0:
+        blocked = ', '.join(map(str, blocked))
+        # update block users
+        mycursor.execute(f"UPDATE users SET role_ = 'block_by_user' WHERE id in ({blocked})")
+        mydb.commit()
+
+        mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
+        mydb.commit()
+
+
+# Telegram methods
+def send_message(chat_id, text):
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    return requests.get(url).json()
+
+
+def send_photo(chat_id, photo, caption=None):
+    url = URL + "sendPhoto?chat_id={}&photo={}".format(chat_id, photo)
+    if caption:
+        url += "&caption={}&parse_mode=HTML".format(caption)
+    return requests.get(url).json()
+
+
+def send_reply_message(chat_id, text, msg_id):
+    url = URL + "sendMessage?chat_id={}&text={}&reply_to_message_id={}&parse_mode=HTML".format(chat_id, text, msg_id)
+    requests.get(url)
+
+
+def update(msg_id, s, last_user_id=0):
+    mycursor.execute("SELECT count FROM mail_requests WHERE msg_id = %s", (msg_id,))
+    count = mycursor.fetchone()[0] + s
+    if not last_user_id:
+        mycursor.execute("DELETE FROM mail_requests WHERE msg_id = %s", (msg_id,))
+        status = 'Finished'
+    else:
+        mycursor.execute(
+            "UPDATE mail_requests SET last_user = (SELECT num FROM users WHERE id = %s), count = count + %s WHERE msg_id = %s",
+            (last_user_id, s, msg_id))
+        status = 'Waiting'
+    mydb.commit()
+
+    edit_buttons(msg_id, status, count)
+
+
+def edit_buttons(msg_id, status, count=0):
+    url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
+        cred['mail_channel_id'], msg_id)
+    text = {"Sending": ["🟢🔄", "stop"], "Waiting": ["🟢️", "stop"],
+            "Stopped": ["🟠", "start"], "Finished": ["✅", "finished"]}[status]
+    buttons = {"inline_keyboard": [[{"text": f"{status} {count} {text[0]}",
+                                     'callback_data': f'{text[1]}_mailing'}],
+                                   [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
+    url += "&reply_markup={}".format(json.dumps(buttons))
+    return requests.get(url).json()
 
 
 # Connect to RDS database
@@ -108,10 +181,3 @@ def get_text_from_db(tag, param=None):
             except KeyError:
                 return None
         return text
-
-
-# Telegram methods
-def send_message(chat_id, text):
-    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
-    r = requests.get(url).json()
-    return r
