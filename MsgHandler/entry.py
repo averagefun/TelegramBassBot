@@ -52,6 +52,7 @@ bass_markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2
                'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
+                                         [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                          [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
 
 
@@ -880,6 +881,7 @@ class InlineButton:
                 "Stopped": ["🟠", "start"], "Finished": ["✅", "finished"]}[status]
         buttons = {"inline_keyboard": [[{"text": f"{status} {count} {text[0]}",
                                          'callback_data': f'{text[1]}_mailing'}],
+                                       [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                        [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
         url += "&reply_markup={}".format(json.dumps(buttons))
         return requests.get(url).json()
@@ -995,6 +997,21 @@ class InlineButton:
                 self.answer_query("Рассылка удалена!")
                 delete_message(self.user_id, self.msg_id)
                 return
+            elif self.data == 'test_mailing':
+                self.answer_query_no_text()
+                if 'text' in self.msg:
+                    text = self.msg['text']
+                    ent = 'entities'
+                elif 'caption' in self.msg:
+                    text = self.msg['caption']
+                    ent = 'caption_entities'
+                else:
+                    text = 'Пост не содержит текста!'
+                    ent = None
+                if ent and ent in self.msg:
+                    text = parser(text, self.msg[ent])
+                send_message(self.user_id, text)
+                return
 
             mycursor.execute("SELECT count FROM mail_requests WHERE msg_id = %s", (self.msg_id, ))
             count = mycursor.fetchone()[0]
@@ -1044,6 +1061,23 @@ class InlineButton:
     def answer_query_no_text(self):
         url = URL + "answerCallbackQuery?callback_query_id={}".format(self.call_id)
         requests.get(url)
+
+
+def parser(text, entities):
+    types = {'bold': 'b', 'italic': 'i', 'underline': 'u',
+             'strikethrough': 's', 'code': 'code'}
+    i = 0
+    for e in entities:
+        l, o = e['length'], e['offset']
+        if e['type'] in types:
+            tag = types[e['type']]
+            text = text[:o+i] + f'<{tag}>' + text[o+i:o+l+i] + f'</{tag}>' + text[o+l+i:]
+            i += 5 + 2 * len(tag)
+        elif e['type'] == 'text_link':
+            url = e['url']
+            text = text[:o+i] + f'<a href="{url}">' + text[o+i:o+l+i] + '</a>' + text[o+l+i:]
+            i += 15 + len(url)
+    return text
 
 
 ##################

@@ -53,14 +53,18 @@ def mailing(user_id_list, msg_id):
     if not r['ok']:
         send_reply_message(cred['mail_channel_id'], "Error with get message info!", msg_id)
         return
-
+    r = r['result']
     photo = text = None
-    if 'text' in r['result']:
-        text = r['result']['text']
-    elif 'photo' in r['result']:
-        if 'caption' in r['result']:
-            text = r['result']['caption']
-        photo = r['result']['photo'][-1]['file_id']
+    if 'text' in r:
+        text = r['text']
+        if 'entities' in r:
+            text = parser(text, r['entities'])
+    elif 'photo' in r:
+        if 'caption' in r:
+            text = r['caption']
+            if 'caption_entities' in r:
+                text = parser(text, r['caption_entities'])
+        photo = r['photo'][-1]['file_id']
     else:
         send_reply_message(cred['mail_channel_id'], "Error: type of message must be text or photo", msg_id)
         return
@@ -75,7 +79,6 @@ def mailing(user_id_list, msg_id):
             r = send_photo(chat_id, photo, text)
         else:
             r = send_message(chat_id, text)
-        time.sleep(0.05)
         # проверяем на успешную отправку
         if not r['ok']:
             if r['error_code'] == 403:
@@ -87,11 +90,14 @@ def mailing(user_id_list, msg_id):
                 return
         else:
             s += 1
-        if int(time.time()) - start_func >= 0:
+        if int(time.time()) - start_func >= 90:
             break
         elif a % 29 == 0:
             # каждые 30 сообщений - пауза побольше
             time.sleep(0.15)
+        else:
+            # обычная пауза
+            time.sleep(0.05)
 
     # обновляем очередь и сообщение в канале
     if a != len(user_id_list) and chat_id:
@@ -109,6 +115,23 @@ def mailing(user_id_list, msg_id):
 
         mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
         mydb.commit()
+
+
+def parser(text, entities):
+    types = {'bold': 'b', 'italic': 'i', 'underline': 'u',
+             'strikethrough': 's', 'code': 'code'}
+    i = 0
+    for e in entities:
+        l, o = e['length'], e['offset']
+        if e['type'] in types:
+            tag = types[e['type']]
+            text = text[:o+i] + f'<{tag}>' + text[o+i:o+l+i] + f'</{tag}>' + text[o+l+i:]
+            i += 5 + 2 * len(tag)
+        elif e['type'] == 'text_link':
+            url = e['url']
+            text = text[:o+i] + f'<a href="{url}">' + text[o+i:o+l+i] + '</a>' + text[o+l+i:]
+            i += 15 + len(url)
+    return text
 
 
 # Telegram methods
@@ -152,6 +175,7 @@ def edit_buttons(msg_id, status, count=0):
             "Stopped": ["🟠", "start"], "Finished": ["✅", "finished"]}[status]
     buttons = {"inline_keyboard": [[{"text": f"{status} {count} {text[0]}",
                                      'callback_data': f'{text[1]}_mailing'}],
+                                   [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                    [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
     url += "&reply_markup={}".format(json.dumps(buttons))
     return requests.get(url).json()

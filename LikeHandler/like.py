@@ -56,7 +56,8 @@ def lambda_handler(event, context):
         if 'callback_query' in event:
             button = InlineButton(event)
             button.action()
-        elif 'channel_post' in event and event['channel_post']['chat']['id'] == int(cred['bass_channel_id']):
+        elif 'channel_post' in event and event['channel_post']['chat']['id'] == int(cred['bass_channel_id'])\
+                and 'pinned_message' not in event['channel_post']:
             if 'audio' in event['channel_post']:
                 # добавляем кнопки у любому аудио в канале
                 r = update_buttons(event['channel_post']['message_id'])

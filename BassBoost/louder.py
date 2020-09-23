@@ -64,6 +64,8 @@ def lambda_handler(event, context):
     if len(file_split) == 2:
         if file_split[0] == '@AudioBassBot':
             file_name = file_split[1] + ' +'
+        elif file_split[0] == '<unknown>':
+            file_name = file_split[1]
         else:
             file_name = f"{file_split[0]} - {file_split[1]}"
 
