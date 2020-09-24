@@ -247,8 +247,9 @@ def edit_and_send_to_channel(bass_file_id, caption):
     url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
     with open(f'/tmp/{filename}', 'rb') as file:
         files = {'audio': file}
-        data = {'chat_id': cred['bass_channel_id'], 'title': caption,
-                'performer': "@AudioBassBot", 'reply_markup': json.dumps(like_markup(0, 0))}
+        data = {'chat_id': cred['bass_channel_id'], 'title': caption, 'caption': f"<b>{caption}</b>",
+                'performer': "@AudioBassBot", 'reply_markup': json.dumps(like_markup(0, 0)),
+                'parse_mode': 'HTML'}
         r = requests.post(url, files=files, data=data).json()
 
     # удаляем BassBoost файл

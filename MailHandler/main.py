@@ -38,7 +38,8 @@ def lambda_handler(event, context):
     if not r:
         return
     msg_id, last_user, count = r
-    mycursor.execute("SELECT id FROM users WHERE role_ != 'block_by_user' and num > %s ORDER BY num", (last_user, ))
+    mycursor.execute("SELECT id FROM users WHERE role_ NOT IN ('block_by_user', 'premium') and num > %s ORDER BY num",
+                     (last_user, ))
     ids = mycursor.fetchall()
     if not ids:
         return update(msg_id, 0)
