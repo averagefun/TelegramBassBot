@@ -43,17 +43,22 @@ pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить о�
                                                [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
                                                [{"text": "Удалить платёжную сессию!",
                                                  'callback_data': 'delete_payment'}]]}
-if_edit_markup = {'keyboard': [['Редактировать файл'], ['Пропустить редактирование']], 'resize_keyboard': True}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
-startbass_markup = {'keyboard': [['По умолчанию (с самого начала)']], 'resize_keyboard': True}
-level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
-bass_markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
-               'one_time_keyboard': True,
-               'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
                                          [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                          [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
+
+level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
+
+
+def bass_markup(cut=True):
+    markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
+              'one_time_keyboard': True,
+              'resize_keyboard': True}
+    if cut:
+        markup['keyboard'] = [["Обрезать файл"]] + markup['keyboard']
+    return markup
 
 
 ####################
@@ -482,6 +487,8 @@ class User:
                     return
                 else:
                     chat_id = chat_id[0]
+                if 'entities' in self.event['message']:
+                    arg2 = parser(arg2, self.event['message']['entities'], 10 + len(arg))
                 r = send_message(chat_id, arg2)
                 # проверяем на успешную отправку
                 if not r['ok']:
@@ -580,6 +587,8 @@ class User:
             texts = [text[0] for text in mycursor.fetchall()]
             if arg and (arg in texts):
                 if arg2:
+                    if 'entities' in self.event['message']:
+                        arg2 = parser(arg2, self.event['message']['entities'], 7 + len(arg))
                     send_message(self.id, f'Теперь {arg} будет выглядеть так:')
                     r = send_message(self.id, arg2)
                     if not r['ok']:
@@ -590,7 +599,7 @@ class User:
                     mydb.commit()
                 else:
                     text = get_text_from_db(arg)
-                    send_message_not_parse(self.id, text)
+                    send_message(self.id, text)
             else:
                 send_message(self.id, 'Доступны следующие теги: ' + ', '.join(texts))
 
@@ -606,7 +615,7 @@ class User:
                 else:
                     mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (arg,))
                     value_param = mycursor.fetchone()[0]
-                    send_message_not_parse(self.id, value_param)
+                    send_message(self.id, value_param)
             else:
                 send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
 
@@ -659,22 +668,32 @@ class User:
             title = 'Audio'
 
         # начинаем формировать запрос
-        mycursor.execute("INSERT INTO bass_requests (id, file_id, format_, duration, file_name) VALUES (%s, %s, %s, %s, %s)", (
-            self.id, audio['file_id'], format_, duration, title))
+        mycursor.execute("INSERT INTO bass_requests (id, file_id, format_, end_, file_name) VALUES (%s, %s, %s, %s, %s)",
+                         (self.id, audio['file_id'], format_, duration, title))
         mydb.commit()
 
         send_message(self.id,
-                     'Файл принят! <b>Теперь можно отредактировать аудио</b>' +
-                     '\n(обрезка и прочее...):',
-                     if_edit_markup)
+                     'Файл принят! <b>Теперь можно выбрать уровень усиления трека или сначала обрезать его:</b>',
+                     bass_markup())
 
         # обновляем статус
-        mycursor.execute('UPDATE users SET status_ = "wait_edit" WHERE id = %s', (self.id,))
+        mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
         mydb.commit()
 
     def send_req_to_bass(self):
+
+        # автообрезание
+        mycursor.execute('SELECT end_ - start_, start_ from bass_requests where id = %s', (self.id,))
+        duration, start = mycursor.fetchone()
+        text = "<b>Запрос отправлен!</b> Ожидайте файл в течение 15-40 секунд."
+        if self.max_sec < duration:
+            text += f" <i>Учтите, что аудио будет обрезано до {self.max_sec} секунд в связи с ограничениями вашей роли.</i>"
+            mycursor.execute('UPDATE bass_requests SET end_ = %s where id = %s',
+                             (self.max_sec + start, self.id))
+            mydb.commit()
+
         # посылаем запрос
-        send_message(self.id, '<b>Запрос отправлен!</b> Ожидайте файл в течение 15-40 секунд.')
+        send_message(self.id, text)
         # получаем id сообщения (стикер с думающим утёнком)
         req_id = send_sticker(self.id, 'loading')
         file = get_file(self.id)
@@ -690,20 +709,6 @@ class User:
             (self.id,))
         mydb.commit()
         put_SNS('BassBoostTrigger', req_id)
-
-    # автоматическое обрезание песни
-    def auto_cut(self, duration):
-        if self.max_sec > duration:
-            return
-        # обрезаем файл, если максимальный объём меньше duration
-        send_message(self.id,
-                     '<b>Внимание!</b>' +
-                     f'\nВаша роль не позволяет обрабатывать песни более <b>{self.max_sec}</b> секунд.' +
-                     f'\nПесня будет обрезана до этого значения!')
-
-        mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
-                         (0, self.max_sec, self.id))
-        mydb.commit()
 
     def msg(self):
         # пытаемся распознать текст, иначе понимаем что юзер скинул неизвестный документ
@@ -733,43 +738,39 @@ class User:
             send_message(self.id, 'Пожалуйста, отправьте <b>файл</b>, а не сообщение!',
                          file_markup)
 
-        elif self.status == 'wait_edit':
-            if self.text == 'Редактировать файл':
-                mycursor.execute("UPDATE users SET status_ = 'wait_cut' WHERE id = %s", (self.id, ))
+        # выбор уровня баса
+        elif self.status == "wait_bass_level":
+            if self.text in level:
+                # уровень баса в словах >> цифры
+                l = level.index(self.text)
+                mycursor.execute('UPDATE bass_requests SET bass_level = %s WHERE id = %s',
+                                 (l, self.id))
+                mydb.commit()
+
+                # отправляем запрос к BassBoostFunc
+                self.send_req_to_bass()
+
+            elif self.text == 'Обрезать файл':
+                mycursor.execute("UPDATE users SET status_ = 'wait_cut' WHERE id = %s", (self.id,))
                 mydb.commit()
                 send_message(self.id,
-                             '<b>Сначала укажи границы обрезки файла (если нужно).</b>' +
-                             '\nПример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.',
+                             '<b>Укажи границы обрезки файла</b>.' +
+                             '\n<i>Пример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.</i>',
                              cut_markup)
-            elif self.text == 'Пропустить редактирование':
-                # получаем длительность файла
-                mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
-                duration = mycursor.fetchone()[0]
 
-                # выполняем автообрезание
-                self.auto_cut(duration)
-
-                mycursor.execute("UPDATE users SET status_ = 'wait_bass_level' WHERE id = %s", (self.id,))
-                mydb.commit()
-                send_message(self.id, '<b>Выбери уровень усиления трека:</b>', bass_markup)
             else:
-                send_message(self.id, 'Нажмите одну из кнопок на клавиатуре!')
+                # непонятный уровень баса, введённый пользователем
+                send_message(self.id,
+                             'Пожалуйста, нажмите одну из кнопок на <b>клавиатуре!</b>',
+                             bass_markup())
 
         # обрезка файла
         elif self.status == "wait_cut":
-            # находим длительность файла
-            mycursor.execute('SELECT duration from bass_requests where id = %s', (self.id,))
-            duration = mycursor.fetchone()[0]
+            if self.text != 'Обрезать не нужно':
+                # находим длительность файла
+                mycursor.execute('SELECT end_ - start_ from bass_requests where id = %s', (self.id,))
+                duration = mycursor.fetchone()[0]
 
-            if self.text == 'Обрезать не нужно':
-
-                # автообрезание
-                self.auto_cut(duration)
-
-                send_message(self.id,
-                             '<b>Теперь укажи, с какой секунды начинать преобразовывать трек. </b>Пример "5.2" - с 5.2 секунды.',
-                             startbass_markup)
-            else:
                 s = self.text.split()
                 # проверка, что введено 2 значения
                 if len(s) != 2:
@@ -790,73 +791,19 @@ class User:
                     mycursor.execute('UPDATE bass_requests SET start_ = %s, end_ = %s where id = %s',
                                      (f0, f1, self.id))
                     mydb.commit()
-                    send_message(self.id,
-                                 'Всё чётко! <b>Теперь укажи, с какой секунды начинать преобразовывать трек.</b>' +
-                                  '\nПример: "5.2" - с 5.2 секунды.\n<i>Указывай время с начала уже обрезанной песни!</i>',
-                                  startbass_markup)
                 else:
                     send_message(self.id,
                                  'Границы обрезки выходят за длительность песни.\n<b>Напишите границы обрезки корректно!</b>',
                                  cut_markup)
                     return
 
-            # обновляем статус на 2
-            mycursor.execute('UPDATE users SET status_ = "wait_bass_start" WHERE id = %s', (self.id,))
-            mydb.commit()
+            send_message(self.id,
+                         "<b>Теперь выбери уровень усиления трека</b>",
+                         bass_markup(cut=False))
 
-        # начало баса
-        elif self.status == "wait_bass_start":
-            if self.text != 'По умолчанию (с самого начала)':
-                # корректность ввода числа
-                try:
-                    # f - начало басса
-                    f = round(float(self.text), 1)
-                except ValueError:
-                    send_message(self.id,
-                                 'Синтаксическая ошибка! \n<b>Проверьте, что десятичная дробь записана через точку!</b>',
-                                 startbass_markup)
-                    return
-                mycursor.execute('SELECT duration, start_, end_ from bass_requests where id = %s', (self.id,))
-                duration = mycursor.fetchone()
-                if not duration[1]:
-                    f1 = duration[0]
-                else:
-                    f1 = duration[2] - duration[1]
-
-                # корректность ввода данных
-                if (f >= 0) and (f < f1):
-                    mycursor.execute('UPDATE bass_requests SET start_bass = %s WHERE id = %s',
-                                     (f, self.id))
-                    mydb.commit()
-                else:
-                    send_message(self.id,
-                                 "Начало баса выходит за границы песни.\n" +
-                                 "<i>(Если вы обрезали песню, то считайте начало от уже обрезанной песни!)</i>\n" +
-                                 "<b>Напишите время корректно!</b>",
-                                 startbass_markup)
-                    return
-
-            send_message(self.id, '<b>Выбери уровень усиления трека:</b>', bass_markup)
-            # обновляем статус
+            # обновляем статус на басс
             mycursor.execute('UPDATE users SET status_ = "wait_bass_level" WHERE id = %s', (self.id,))
             mydb.commit()
-
-        # выбор уровня баса
-        elif self.status == "wait_bass_level":
-            if self.text in level:
-                # уровень баса в словах >> цифры
-                l = level.index(self.text)
-                mycursor.execute('UPDATE bass_requests SET bass_level = %s WHERE id = %s',
-                                 (l, self.id))
-                mydb.commit()
-                # отправляем запрос к BassBoostFunc
-                self.send_req_to_bass()
-
-            # непонятный уровень баса, введённый пользователем
-            else:
-                send_message(self.id,
-                             'Такого уровня баса ещё не существует. Выберите уровень из <b>установленных значений!</b>',
-                             bass_markup)
 
 
 def get_users(role):
@@ -1063,12 +1010,12 @@ class InlineButton:
         requests.get(url)
 
 
-def parser(text, entities):
+def parser(text, entities, delta=0):
     types = {'bold': 'b', 'italic': 'i', 'underline': 'u',
              'strikethrough': 's', 'code': 'code'}
     i = 0
     for e in entities:
-        l, o = e['length'], e['offset']
+        l, o = e['length'], e['offset'] - delta
         if e['type'] in types:
             tag = types[e['type']]
             text = text[:o+i] + f'<{tag}>' + text[o+i:o+l+i] + f'</{tag}>' + text[o+l+i:]
@@ -1084,7 +1031,8 @@ def parser(text, entities):
 # Telegram methods
 ##################
 def send_message(chat_id, text, reply_markup=None):
-    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML&disable_web_page_preview=True".format(
+                                                                                               chat_id, text)
     if reply_markup:
         url += f"&reply_markup={json.dumps(reply_markup)}"
     r = requests.get(url).json()
@@ -1093,11 +1041,6 @@ def send_message(chat_id, text, reply_markup=None):
 
 def send_reply_message(chat_id, text, msg_id):
     url = URL + "sendMessage?chat_id={}&text={}&reply_to_message_id={}&parse_mode=HTML".format(chat_id, text, msg_id)
-    requests.get(url)
-
-
-def send_message_not_parse(chat_id, text):
-    url = URL + "sendMessage?chat_id={}&text={}".format(chat_id, text)
     requests.get(url)
 
 

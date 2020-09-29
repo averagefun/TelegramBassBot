@@ -69,10 +69,9 @@ def lambda_handler(event, context):
         else:
             file_name = f"{file_split[0]} - {file_split[1]}"
 
-    duration = req[5:7]
-    start_bass = req[7]
-    bass_level = req[8]
-    file_path = req[9]
+    duration = req[4:6]
+    bass_level = req[6]
+    file_path = req[7]
 
     # работа с форматом mpeg
     if format_ == 'mpeg':
@@ -100,7 +99,7 @@ def lambda_handler(event, context):
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
         try:
-            combined, text, share_markup = main_audio(filename1, chat_id, format_, params, duration, start_bass)
+            combined, text, share_markup = main_audio(filename1, chat_id, format_, params, duration)
             combined.export(file, format="mp3")
         except Exception:
             success = False
@@ -144,31 +143,22 @@ def lambda_handler(event, context):
         send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
 
 
-def main_audio(filename, chat_id, format_, params, dur=None, start_b=None):
+def main_audio(filename, chat_id, format_, params, duration):
     sample = AudioSegment.from_file(f'/tmp/{filename}', format=format_)
 
     # обрезка
-    if dur[1]:
-        sample = sample[dur[0] * 1000: dur[1] * 1000]
+    sample = sample[duration[0] * 1000: duration[1] * 1000]
 
     # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = round(len(sample) / 1000)
 
     text, share_markup = get_text(table_dur, chat_id)
 
-    # начало баса
-    if start_b:
-        start_ = sample[:start_b * 1000]
-        sample = sample[start_b * 1000:]
-
     attenuate_db = params[1]
     accentuate_db = params[2]
 
     filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), params[3]))
     combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
-
-    if start_b:
-        combined = start_ + combined
 
     return combined, text, share_markup
 
@@ -220,7 +210,11 @@ def get_text(table_dur, chat_id):
 
     # standard
     else:
-        text = get_text_from_db('after_req_standard')
+        mycursor.execute("SELECT text FROM msgs WHERE name IN ('after_req_standard', 'adv')")
+        f = mycursor.fetchall()
+        text = f[0][0]
+        adv = f[1][0]
+
         share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}]]}
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
@@ -229,7 +223,8 @@ def get_text(table_dur, chat_id):
             mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
             ref_bonus = mycursor.fetchone()[0]
             text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
-
+        elif adv.lower() != "null":
+            text += f'\n\n{adv}'
     return text, share_markup
 
 
@@ -240,7 +235,7 @@ def delete_message(chat_id, message_id):
 
 
 def send_message(chat_id, text, reply_markup=None):
-    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML".format(chat_id, text)
+    url = URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML&disable_web_page_preview=True".format(chat_id, text)
     if reply_markup:
         url += f"&reply_markup={json.dumps(reply_markup)}"
     r = requests.get(url).json()
