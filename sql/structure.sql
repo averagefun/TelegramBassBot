@@ -44,10 +44,8 @@ CREATE TABLE `bass_requests` (
   `file_id` varchar(255) DEFAULT NULL,
   `format_` varchar(31) DEFAULT NULL,
   `file_name` varchar(255) DEFAULT NULL,
-  `duration` smallint(6) DEFAULT NULL,
-  `start_` smallint(6) DEFAULT NULL,
+  `start_` smallint(6) DEFAULT '0',
   `end_` smallint(6) DEFAULT NULL,
-  `start_bass` smallint(6) DEFAULT NULL,
   `bass_level` smallint(6) DEFAULT NULL,
   `file_path` varchar(255) DEFAULT NULL,
   `req_id` int(11) DEFAULT NULL,
@@ -69,6 +67,22 @@ CREATE TABLE `channel_likes` (
   `likes` smallint(6) DEFAULT NULL,
   `dislikes` smallint(6) DEFAULT NULL,
   `liked_users` text,
+  PRIMARY KEY (`msg_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `mail_requests`
+--
+
+DROP TABLE IF EXISTS `mail_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `mail_requests` (
+  `msg_id` int(11) NOT NULL,
+  `last_user` int(11) NOT NULL DEFAULT '0',
+  `count` int(11) NOT NULL DEFAULT '0',
+  `active` bit(1) NOT NULL DEFAULT b'0',
   PRIMARY KEY (`msg_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -172,7 +186,7 @@ CREATE TABLE `users` (
   `role_end` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`num`),
   UNIQUE KEY `id` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=443 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=519 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -184,4 +198,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-09-16 19:49:50
+-- Dump completed on 2020-10-03 20:53:53

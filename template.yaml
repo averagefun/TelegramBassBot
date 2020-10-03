@@ -43,7 +43,7 @@ Resources:
       Description: "Handles message from TelegramBot"
       CodeUri: MsgHandler/
       Handler: entry.lambda_handler
-      Timeout: 7
+      Timeout: 8
       MemorySize: 128
       Runtime: python3.7
       Layers:
@@ -58,6 +58,8 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName:
               Ref: CredTableTBot
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
       Events:
         BotApi:
           Type: Api

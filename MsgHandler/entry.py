@@ -23,8 +23,7 @@ cred = get_cred()
 
 # convert to int some values
 cred['maxsize'] = int(cred['maxsize'])
-# main admin - creator
-creator = {'id': int(cred['creator_id']), 'username': cred['creator_username']}
+cred['creator_id'] = int(cred['creator_id'])
 
 # TelegramBot
 Token = cred['bot_token']
@@ -72,7 +71,7 @@ def lambda_handler(event, context):
         msg_handler(event)
     except Exception as e:
         print(f'ERROR:{e} || EVENT:{event}')
-        send_message(creator['id'], f'ERROR:\n{e}\nEVENT:\n{event}')
+        send_message(cred['creator_id'], f'ERROR:\n{e}\nEVENT:\n{event}')
 
     # в любом случае возвращаем телеграму код 200
     return {'statusCode': 200}
@@ -202,7 +201,7 @@ class User:
     def new_user(self):
         user_info = [self.id, self.username, "start", 0, "start", 0]
         # init admins
-        if self.id == creator['id']:
+        if self.id == cred['creator_id']:
             user_info[2] = 'admin'
             send_message(self.id, 'Привет, Создатель!')
         mycursor.execute(
@@ -526,7 +525,7 @@ class User:
                                 blocked.append(chat_id)
                             else:
                                 # прочая ошибка
-                                send_message(creator['id'],
+                                send_message(cred['creator_id'],
                                              f"!!! <b>ERROR</b> на {k + 1} человеке (id: {chat_id}):\n{r['description']}")
                                 return
                         else:
@@ -543,7 +542,7 @@ class User:
                         mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
                         mydb.commit()
 
-                    send_message(creator['id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
+                    send_message(cred['creator_id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
                 else:
                     # Часть пользователей не найдена
                     send_message(self.id, f'NameError: {diff} пользователя не найдено!')
@@ -557,7 +556,7 @@ class User:
                 mycursor.execute("SELECT EXISTS(SELECT username FROM users WHERE username = %s)",
                                  (arg[1:],))
                 user_exist = mycursor.fetchone()
-                if user_exist and arg != creator['username']:
+                if user_exist and arg != cred['creator_username']:
                     mycursor.execute("UPDATE users SET role_ = 'ban' WHERE username = %s",
                                      (arg[1:],))
                     mydb.commit()
@@ -869,7 +868,7 @@ class InlineButton:
             else:
                 if pay_check['error'] == 'Payment_not_found':
                     self.answer_query(
-                        'Повторите попытку проверки через нескольско секунд. Мы ещё не получили платёж от Qiwi!',
+                        'Повторите попытку проверки через несколько секунд. Мы ещё не получили платёж от Qiwi!',
                         show_alert=True)
                 elif pay_check['error'] == 'already_complete':
                     self.answer_query('Вы уже успешно оплатили этот заказ!', show_alert=True)
@@ -885,7 +884,7 @@ class InlineButton:
         elif self.data == 'error_payment':
             self.answer_query_no_text()
             send_message(self.user_id,
-                         f"Сожалеем, что у вас возникли проблемы, опишите свою проблему в сообщении @{creator['username']}, прикрепите скриншот квитанции об оплате!")
+                         f"Сожалеем, что у вас возникли проблемы, опишите свою проблему в сообщении @{cred['creator_username']}, прикрепите скриншот квитанции об оплате!")
 
         elif self.data == 'delete_payment':
             mycursor.execute("DELETE FROM payment_query WHERE pay_id = %s", (self.msg_id,))
@@ -998,7 +997,7 @@ class InlineButton:
         else:
             # ошибочная кнопка
             self.answer_query_no_text()
-            send_message(creator['id'], f'ERROR with inline button:\nMESSAGE:\n{self.msg}')
+            send_message(cred['creator_id'], f'ERROR with inline button:\nMESSAGE:\n{self.msg}')
 
     def answer_query(self, text, show_alert=False):
         url = URL + "answerCallbackQuery?callback_query_id={}&text={}&show_alert={}".format(self.call_id, text,
