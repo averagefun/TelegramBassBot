@@ -115,7 +115,7 @@ Resources:
         Mail:
           Type: Schedule
           Properties:
-            Schedule: cron(0/30 * ? * * *)
+            Schedule: cron(0 * ? * * *)
 
   LikeHandler:
     Type: AWS::Serverless::Function

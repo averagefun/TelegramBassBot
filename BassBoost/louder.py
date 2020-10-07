@@ -74,7 +74,7 @@ def lambda_handler(event, context):
     file_path = req[7]
 
     # работа с форматом mpeg
-    if format_ == 'mpeg':
+    if 'mpeg' in format_:
         if file_path[-3:] == 'mp3':
             format_ = 'mp3'
         else:

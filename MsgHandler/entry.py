@@ -31,7 +31,7 @@ URL = "https://api.telegram.org/bot{}/".format(Token)
 
 # Используемые типы
 tags = {'audio', 'voice', 'video_note', 'video'}
-formats = ('mpeg', 'mp3', 'mp4', 'ogg')
+formats = ('mpeg', 'mpeg3', 'mp3', 'mp4', 'ogg')
 
 # все используемые клавиатуры
 products = {"inline_keyboard": [[{"text": "Купить premium (24 часа)", 'callback_data': 'premium_day'}],
