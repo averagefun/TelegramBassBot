@@ -5,25 +5,7 @@ import time
 import json
 
 
-# Get cred
-def get_cred():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('CredTableTBot')
-    items = table.scan()['Items']
-    keys = [item['cred_name'] for item in items]
-    values = [item['cred_value'] for item in items]
-    cred = dict(zip(keys, values))
-    return cred
-
-cred = get_cred()
-
-# TelegramBot
-Token = cred['bot_token']
-URL = "https://api.telegram.org/bot{}/".format(Token)
-
-
 def lambda_handler(event, context):
-
     print(event)
 
     global mycursor
@@ -206,3 +188,21 @@ def get_text_from_db(tag, param=None):
             except KeyError:
                 return None
         return text
+
+
+# Get cred
+def get_cred():
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('CredTableTBot')
+    items = table.scan()['Items']
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
+    cred = dict(zip(keys, values))
+    return cred
+
+
+cred = get_cred()
+
+# TelegramBot
+Token = cred['bot_token']
+URL = "https://api.telegram.org/bot{}/".format(Token)

@@ -6,27 +6,6 @@ import time
 import mysql.connector
 
 
-# Get cred
-def get_cred():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('CredTableTBot')
-    items = table.scan()['Items']
-    keys = [item['cred_name'] for item in items]
-    values = [item['cred_value'] for item in items]
-    cred = dict(zip(keys, values))
-    return cred
-
-
-cred = get_cred()
-
-# main admin - creator
-creator = {'id': int(cred['creator_id']), 'username': cred['creator_username']}
-
-# TelegramBot
-Token = cred['like_bot_token']
-URL = "https://api.telegram.org/bot{}/".format(Token)
-
-
 ####################
 #  lambda_handler  #
 ####################
@@ -335,3 +314,24 @@ def connect_db():
     )
     mycursor = mydb.cursor()
     return mycursor, mydb
+
+
+# Get cred
+def get_cred():
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('CredTableTBot')
+    items = table.scan()['Items']
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
+    cred = dict(zip(keys, values))
+    return cred
+
+
+cred = get_cred()
+
+# main admin - creator
+creator = {'id': int(cred['creator_id']), 'username': cred['creator_username']}
+
+# TelegramBot
+Token = cred['like_bot_token']
+URL = "https://api.telegram.org/bot{}/".format(Token)

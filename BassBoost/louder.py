@@ -11,32 +11,6 @@ import random
 import json
 
 
-# Get cred
-def get_cred():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('CredTableTBot')
-    items = table.scan()['Items']
-    keys = [item['cred_name'] for item in items]
-    values = [item['cred_value'] for item in items]
-    cred = dict(zip(keys, values))
-    return cred
-
-
-cred = get_cred()
-
-# TelegramBot
-Token = cred['bot_token']
-URL = "https://api.telegram.org/bot{}/".format(Token)
-
-# Доступные форматы
-formats_ = ('mp3', 'ogg', 'mp4')
-
-shutil.copy(r'/opt/ffmpeg/ffmpeg', r'/tmp/ffmpeg')
-shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
-os.chmod(r'/tmp/ffmpeg', 755)
-os.chmod(r'/tmp/ffprobe', 755)
-
-
 def lambda_handler(event, context):
     global mycursor
     global mydb
@@ -127,7 +101,6 @@ def lambda_handler(event, context):
             r = requests.post(url, files=files, data=data)
 
         # выводим сообщение смотря на роль
-        file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
         send_message(chat_id, text, file_markup)
 
         # удаляем BassBoost файл
@@ -140,7 +113,8 @@ def lambda_handler(event, context):
         bass_file_id = json.loads(r.content)['result']['audio']['file_id']
         send_to_channel(file_id, bass_file_id, username, params[0])
     else:
-        send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>')
+        send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>',
+                     file_markup)
 
 
 def main_audio(filename, chat_id, format_, params, duration):
@@ -273,3 +247,31 @@ def get_text_from_db(tag, param=None):
             except KeyError:
                 return None
         return text
+
+
+# Get cred
+def get_cred():
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('CredTableTBot')
+    items = table.scan()['Items']
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
+    cred = dict(zip(keys, values))
+    return cred
+
+
+cred = get_cred()
+
+# TelegramBot
+Token = cred['bot_token']
+URL = "https://api.telegram.org/bot{}/".format(Token)
+
+# Доступные форматы
+formats_ = ('mp3', 'ogg', 'mp4')
+
+shutil.copy(r'/opt/ffmpeg/ffmpeg', r'/tmp/ffmpeg')
+shutil.copy(r'/opt/ffmpeg/ffprobe', r'/tmp/ffprobe')
+os.chmod(r'/tmp/ffmpeg', 755)
+os.chmod(r'/tmp/ffprobe', 755)
+
+file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}

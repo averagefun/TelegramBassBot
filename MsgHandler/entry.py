@@ -8,58 +8,6 @@ import boto3
 import mysql.connector
 
 
-# Get cred
-def get_cred():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('CredTableTBot')
-    items = table.scan()['Items']
-    keys = [item['cred_name'] for item in items]
-    values = [item['cred_value'] for item in items]
-    cred = dict(zip(keys, values))
-    return cred
-
-
-cred = get_cred()
-
-# convert to int some values
-cred['maxsize'] = int(cred['maxsize'])
-cred['creator_id'] = int(cred['creator_id'])
-
-# TelegramBot
-Token = cred['bot_token']
-URL = "https://api.telegram.org/bot{}/".format(Token)
-
-# Используемые типы
-tags = {'audio', 'voice', 'video_note', 'video'}
-formats = ('mpeg', 'mpeg3', 'mp3', 'mp4', 'ogg')
-
-# все используемые клавиатуры
-products = {"inline_keyboard": [[{"text": "Купить premium (24 часа)", 'callback_data': 'premium_day'}],
-                                [{"text": "Купить premium (7 дней)", 'callback_data': 'premium_week'}],
-                                [{"text": "Купить premium (30 дней)", 'callback_data': 'premium_month'}]]}
-pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
-pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
-                                               [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
-                                               [{"text": "Удалить платёжную сессию!",
-                                                 'callback_data': 'delete_payment'}]]}
-cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
-file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
-start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
-                                         [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
-                                         [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
-
-level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
-
-
-def bass_markup(cut=True):
-    markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
-              'one_time_keyboard': True,
-              'resize_keyboard': True}
-    if cut:
-        markup['keyboard'] = [["Обрезать файл"]] + markup['keyboard']
-    return markup
-
-
 ####################
 #  lambda_handler  #
 ####################
@@ -1140,3 +1088,59 @@ def put_SNS(topic_name, message):
         TargetArn=arn,
         Message=json.dumps(message)
     )
+
+
+# Get cred
+def get_cred():
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('CredTableTBot')
+    items = table.scan()['Items']
+    keys = [item['cred_name'] for item in items]
+    values = [item['cred_value'] for item in items]
+    cred = dict(zip(keys, values))
+    return cred
+
+
+cred = get_cred()
+# convert to int some values
+cred['maxsize'] = int(cred['maxsize'])
+cred['creator_id'] = int(cred['creator_id'])
+
+
+##################
+# GLOBAL CONSTANTS
+##################
+# TelegramBot
+Token = cred['bot_token']
+URL = "https://api.telegram.org/bot{}/".format(Token)
+
+# Используемые типы
+tags = {'audio', 'voice', 'video_note', 'video'}
+formats = ('mpeg', 'mpeg3', 'mp3', 'mp4', 'ogg')
+
+# все используемые клавиатуры
+products = {"inline_keyboard": [[{"text": "Купить premium (24 часа)", 'callback_data': 'premium_day'}],
+                                [{"text": "Купить premium (7 дней)", 'callback_data': 'premium_week'}],
+                                [{"text": "Купить premium (30 дней)", 'callback_data': 'premium_month'}]]}
+pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
+pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
+                                               [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
+                                               [{"text": "Удалить платёжную сессию!",
+                                                 'callback_data': 'delete_payment'}]]}
+cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
+file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
+start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
+                                         [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
+                                         [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
+
+level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
+
+
+def bass_markup(cut=True):
+    markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
+              'one_time_keyboard': True,
+              'resize_keyboard': True}
+    if cut:
+        markup['keyboard'] = [["Обрезать файл"]] + markup['keyboard']
+    return markup
+
