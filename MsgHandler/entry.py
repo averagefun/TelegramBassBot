@@ -1,7 +1,6 @@
 import json
 import time
 
-import pay
 import requests
 import boto3
 import mysql.connector
@@ -155,26 +154,17 @@ class User:
             mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
             mydb.commit()
         else:
-            # проверка на реферальную ссылку при старте с дебагом
             try:
                 text = self.event['message']['text'].split()
             except KeyError:
                 pass
-            if text[0] == '/start' and len(text) == 2 and text[1].isdigit() and self.status == 'start':
-                ref_user_id = int(text[1])
-                mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
-                res = mycursor.fetchone()
-                if res:
-                    mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
-                    mydb.commit()
 
     def commands(self):
         # команды по ролям
-        commands_list = {'standard': ['/start', '/help', '/stats', '/cancel', '/pay', '/buy', '/commands'],
+        commands_list = {'standard': ['/start', '/help', '/cancel', '/commands'],
                          'premium': [],
                          'admin': ['/active', '/users', '/message', '/ban', '/unban', '/text', '/price']}
-        # команды по оплате
-        pays_command = ['/pay', '/buy']
+
         row_text = self.text.split('\n')
         text = row_text[0].split()
         command = text[0]
@@ -206,20 +196,11 @@ class User:
         # начальное сообщение-приветствие
         if command == '/start':
             if self.status == 'start' or self.role in ('admin', 'block_by_user'):
-                # проверка на реферальную ссылку
-                if arg and arg.isdigit() and self.status == 'start':
-                    ref_user_id = int(arg)
-                    mycursor.execute("SELECT EXISTS(SELECT id FROM users WHERE id = %s)", (ref_user_id, ))
-                    res = mycursor.fetchone()
-                    if res:
-                        mycursor.execute("INSERT INTO referral VALUES (%s, %s, %s)", (ref_user_id, self.id, 0))
-                        mydb.commit()
 
                 # восстановление роли standard после блокировки
                 if self.role == 'block_by_user':
                     mycursor.execute("UPDATE users SET role_ = 'standard' WHERE id = %s", (self.id, ))
                     mydb.commit()
-                    mycursor.execute("UPDATE referral SET invited_active = 1 WHERE invited_id = %s", (self.id, ))
                     self.role = 'standard'
 
                 self.start_msg()
@@ -240,55 +221,6 @@ class User:
         elif command == '/help':
             text = get_text_from_db('help')
             text += '\n\n'
-            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
-            text += get_text_from_db('referral', {'id': self.id, 'ref_bonus': mycursor.fetchone()[0]})
-            send_message(self.id, text)
-            return
-
-        # Оплата
-        elif command in pays_command:
-            # получаем цены на товары и курс секунд сейчас
-            mycursor.execute("SELECT * FROM payment_param")
-            params = mycursor.fetchall()
-            keys = [param[0] for param in params]
-            values = [param[1] for param in params]
-            p = dict(zip(keys, values))
-
-            # получаем параметры по ролям
-            mycursor.execute("SELECT * FROM roles")
-            roles = mycursor.fetchall()
-            keys = [role[0] for role in roles]
-            values = [role[1] for role in roles]  # max_sec
-            r = dict(zip(keys, values))
-
-            param_prod = {'premium_day': p['premium_day'], 'premium_week': p['premium_week'],
-                          'premium_month': p['premium_month'], 'max_sec_premium': r['premium'],
-                          'max_sec_standard': r['standard']}
-
-            if command == '/pay':
-                text = get_text_from_db('pay_system')
-                text += '\n\n'
-                text += get_text_from_db('products', param_prod)
-                send_message(self.id, text, pay_inline_markup)
-                return
-
-            elif command == '/buy':
-                text = get_text_from_db('products', param_prod)
-                send_message(self.id, text, products)
-                return
-
-        elif command == '/stats':
-            if self.user_info[-1]:
-                role_end = f"Действует до: {self.user_info[-1]} по МСК"
-            else:
-                role_end = ""
-
-            mycursor.execute("SELECT COUNT(*) FROM referral WHERE user_id = %s and invited_active = 1",
-                                                                                            (self.id, ))
-            ref_count = mycursor.fetchone()[0]
-            param = {'balance': self.balance, 'role': self.role, 'role_end': role_end,
-                     'max_sec': self.max_sec, 'total': self.total, 'ref_count': ref_count}
-            text = get_text_from_db('stats', param)
             send_message(self.id, text)
             return
 
@@ -430,8 +362,6 @@ class User:
                     if r['error_code'] == 403:
                         mycursor.execute("UPDATE users SET role_ = 'block_by_user' WHERE id = %s", (chat_id,))
                         mydb.commit()
-                        mycursor.execute("UPDATE referral SET invited_active = 0 WHERE invited_id = %s", (chat_id,))
-                        mydb.commit()
                         send_message(self.id, "Пользователь заблокировал бота!")
                     else:
                         send_message(self.id,
@@ -472,9 +402,6 @@ class User:
                         blocked = ', '.join(map(str, blocked))
                         # update block users
                         mycursor.execute(f"UPDATE users SET role_ = 'block_by_user' WHERE id in ({blocked})")
-                        mydb.commit()
-
-                        mycursor.execute(f"UPDATE referral SET invited_active = 0 WHERE invited_id in ({blocked})")
                         mydb.commit()
 
                     send_message(cred['creator_id'], f"Сообщений успешно отправлено: <b>{k}</b>\nЗаблокировали бота: <b>{n}</b> чел.")
@@ -571,8 +498,8 @@ class User:
         # проверка на формат
         if format_ not in formats:
             send_message(self.id,
-                         'Неизвестный формат файла! \n<b>Доступные форматы: mp3, ogg, mp4!</b>')
-            send_message(self.id, '<i>Загрузите файл для нового запроса!</i>')
+                         'Неизвестный формат файла. \n<i>Доступные форматы: mp3, ogg, mp4.</i>' +
+                         '\nПожалуйста, <b>загрузите другой файл!</b>')
             mycursor.execute(f'DELETE FROM bass_requests WHERE id = %s', (self.id, ))
             mydb.commit()
             mycursor.execute(f"UPDATE users SET status_ = 'wait_file' WHERE id = %s", (self.id, ))
@@ -621,7 +548,7 @@ class User:
         duration, start = mycursor.fetchone()
         text = "<b>Запрос отправлен!</b> Ожидайте файл в течение 15-40 секунд."
         if self.max_sec < duration:
-            text += f" <i>Учтите, что аудио будет обрезано до {self.max_sec} секунд в связи с ограничениями вашей роли.</i>"
+            text += f" <i>Учтите, что аудио будет обрезано до {self.max_sec} секунд в связи с ограничениями на размер аудио.</i>"
             mycursor.execute('UPDATE bass_requests SET end_ = %s where id = %s',
                              (self.max_sec + start, self.id))
             mydb.commit()

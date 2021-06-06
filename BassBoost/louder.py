@@ -7,7 +7,6 @@ import boto3
 import time
 import requests
 import mysql.connector
-import random
 import json
 
 
@@ -155,20 +154,6 @@ def get_text(table_dur, chat_id):
         mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
                          (table_dur, chat_id))
         mydb.commit()
-        # check for referral
-        mycursor.execute("SELECT user_id FROM referral WHERE invited_id = %s", (chat_id, ))
-        ref_user_id = mycursor.fetchone()
-        if ref_user_id:
-            query = "SELECT username, value_param FROM users, payment_param WHERE id = %s and name_param = 'ref_bonus'"
-            mycursor.execute(query, (chat_id, ))
-            username, ref_bonus = mycursor.fetchone()
-            send_message(ref_user_id[0],
-                            f"@{username} воспользовался вашей реферальной ссылкой! Вам начислено <b>{ref_bonus}</b> руб!")
-            # обновляем таблицы
-            mycursor.execute(
-                "UPDATE referral, users SET referral.invited_active = 1, users.balance = users.balance + %s WHERE invited_id = %s and users.id = %s",
-                                                                                                                (ref_bonus, chat_id, ref_user_id[0]))
-            mydb.commit()
 
         mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
         max_sec_standard = mycursor.fetchone()[0]
@@ -188,12 +173,7 @@ def get_text(table_dur, chat_id):
 
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
-        if random.random() <= 0.15:
-            text += '\n\n'
-            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = 'ref_bonus'")
-            ref_bonus = mycursor.fetchone()[0]
-            text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
-        elif adv.lower() != "null":
+        if adv.lower() != "null":
             text += f'\n\n{adv}'
     return text
 
