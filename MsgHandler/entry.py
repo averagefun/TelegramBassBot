@@ -684,14 +684,21 @@ class User:
                 # отправляем запрос к BassBoostFunc
                 self.send_req_to_bass()
 
-            elif self.text == 'Обрезать файл':
+            elif self.text == '✂Обрезать файл':
                 mycursor.execute("UPDATE users SET status_ = 'wait_cut' WHERE id = %s", (self.id,))
                 mydb.commit()
                 send_message(self.id,
                              '<b>Укажи границы обрезки файла</b>.' +
                              '\n<i>Пример (вводить без кавычек): "1.5 10" - обрезка песни с 1.5 по 10 секунду.</i>',
                              cut_markup)
-
+            elif self.text == "❌Отменить":
+                mycursor.execute('DELETE FROM bass_requests WHERE id = %s', (self.id,))
+                mydb.commit()
+                mycursor.execute('UPDATE users SET status_ = "wait_file" WHERE id = %s', (self.id,))
+                mydb.commit()
+                send_message(self.id, '<b>Запрос отменён!</b> \n<i>Загрузите файл для нового запроса.</i>',
+                             file_markup)
+                return
             else:
                 # непонятный уровень баса, введённый пользователем
                 send_message(self.id,
@@ -1068,14 +1075,13 @@ start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_
                                          [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                          [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
 
-level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "📣Earrape Low", "📢Earrape High️", "‼️Earrape ULTRA"]
-
+level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA"]
 
 def bass_markup(cut=True):
-    markup = {'keyboard': [[level[0], level[3]], [level[1], level[4]], [level[2], level[5]]],
+    markup = {'keyboard': [[level[0]], [level[1]], [level[2]], ["❌Отменить"]],
               'one_time_keyboard': True,
               'resize_keyboard': True}
     if cut:
-        markup['keyboard'] = [["Обрезать файл"]] + markup['keyboard']
+        markup['keyboard'][-1] = ["✂Обрезать файл", "❌Отменить"]
     return markup
 

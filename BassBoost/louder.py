@@ -37,7 +37,7 @@ def lambda_handler(event, context):
     file_split = file_name.split('|')
     if len(file_split) == 2:
         if file_split[0] == '@AudioBassBot':
-            file_name = file_split[1] + ' +'
+            file_name = file_split[1] + '+'
         elif file_split[0] == '<unknown>':
             file_name = file_split[1]
         else:
@@ -95,8 +95,8 @@ def lambda_handler(event, context):
         url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
-            be = 'BassBoosted' if bass_level < 3 else 'Earrape'
-            data = {'chat_id': chat_id, 'title': f'{file_name} {be}'}
+            add = '' if file_name[-1] == '+' else "BassBoosted"
+            data = {'chat_id': chat_id, 'title': f'{file_name} {add}'}
             data['performer'] = "@AudioBassBot"
             r = requests.post(url, files=files, data=data)
 
