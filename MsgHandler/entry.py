@@ -1,5 +1,4 @@
 import json
-import random
 import time
 
 import pay
@@ -35,18 +34,6 @@ def msg_handler(event):
     if 'callback_query' in event.keys():
         button = InlineButton(event)
         button.action()
-        return
-    elif 'channel_post' in event and event['channel_post']['chat']['id'] == int(cred['mail_channel_id']):
-        url = URL + "editMessageReplyMarkup?chat_id={}&message_id={}".format(
-            cred['mail_channel_id'], event['channel_post']['message_id'])
-        url += "&reply_markup={}".format(json.dumps(start_mail_markup))
-        r = requests.get(url).json()
-        if r['ok']:
-            msg_id = r['result']['message_id']
-            mycursor.execute("INSERT INTO mail_requests (msg_id) VALUES (%s)", (msg_id, ))
-            mydb.commit()
-        else:
-            send_message(cred['mail_channel_id'], "ERROR!\nCan't add keyboard.")
         return
 
     # инициализация юзера
@@ -840,47 +827,6 @@ class InlineButton:
             self.answer_query('Успешно удалено')
             delete_message(self.user_id, self.msg_id)
 
-        elif self.data in ('anon_share', 'name_share'):
-            caption = f"{self.user_id}|{self.msg_id}|@{self.msg['chat']['username']}|"
-            caption += "anon" if self.data == 'anon_share' else "public"
-            caption += f"|reason|<b>{self.msg['audio']['title']}</b>"
-            send_to_admin_share_channel(self.msg['audio']['file_id'], caption)
-            # удаляем клавиатуру
-            edit_markup(self.user_id, self.msg_id)
-            self.answer_query('Трек отправлен на модерацию в @BassBoostCollection!', show_alert=True)
-
-        elif self.data == 'send_to_channel':
-            if self.msg['caption']:
-                parts = self.msg['caption'].split("|")
-                if len(parts) == 6 and parts[3] in ('anon', 'public'):
-                    caption = parts[5]
-                    if parts[3] == 'public':
-                        caption += f"\nОтправил {parts[2]}"
-                    put_SNS('SendToChannelTrigger', f"{self.msg['audio']['file_id']}|{caption}")
-                    delete_message(self.user_id, self.msg_id)
-                    self.answer_query('Трек успешно отправлен!')
-                    send_reply_message(parts[0],
-                                       "Ваш трек <b>успешно</b> прошёл модерацию в канал @BassBoostCollection!",
-                                       parts[1])
-                else:
-                    self.answer_query('Исправьте описание по образцу!', show_alert=True)
-            else:
-                self.answer_query('Добавьте к треку описание по образцу!', show_alert=True)
-
-        elif self.data == 'delete_from_admin_share_channel':
-            if self.msg['caption']:
-                parts = self.msg['caption'].split("|")
-                if len(parts) != 6:
-                    self.answer_query("В описании должно быть 6 слов, разделённых '|'.", show_alert=True)
-                    return
-                text = "Извините, ваш трек не прошёл модерацию в канал @BassBoostCollection."
-                if parts[4] != 'reason':
-                    text += f" Причина: {parts[4]}."
-                text += " Попробуйте в следующий раз :)"
-                send_reply_message(parts[0], text, parts[1])
-                delete_message(self.user_id, self.msg_id)
-                self.answer_query('Успешно удалён!')
-
         elif 'mailing' in self.data:
             if self.data == 'finished_mailing':
                 self.answer_query("Эта рассылка уже завершена!", show_alert=True)
@@ -1008,17 +954,6 @@ def edit_markup(chat_id, message_id, reply_markup=None):
 def delete_message(chat_id, message_id):
     url = URL + "deleteMessage?chat_id={}&message_id={}".format(chat_id, message_id)
     requests.get(url)
-
-
-def send_to_admin_share_channel(bass_file_id, caption):
-    url = URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(cred['admin_share_channel_id'],
-                                                                                  bass_file_id, caption)
-    # добавляем клавиатуру
-    admin_share_markup = {"inline_keyboard": [[{"text": "ОТПРАВИТЬ В КАНАЛ!", 'callback_data': 'send_to_channel'}],
-                                              [{"text": "УДАЛИТЬ ТРЕК!", 'callback_data': 'delete_from_admin_share_channel'}]]}
-    url += f"&reply_markup={json.dumps(admin_share_markup)}"
-    requests.get(url)
-
 
 def get_text_from_db(tag, param=None):
     mycursor.execute("SELECT text FROM msgs WHERE name = %s", (tag,))

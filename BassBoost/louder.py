@@ -73,7 +73,7 @@ def lambda_handler(event, context):
     success = True
     with open(f'/tmp/{filename2}', 'wb') as file:
         try:
-            combined, text, share_markup = main_audio(filename1, chat_id, format_, params, duration)
+            combined, text = main_audio(filename1, chat_id, format_, params, duration)
             combined.export(file, format="mp3")
         except Exception:
             success = False
@@ -96,7 +96,7 @@ def lambda_handler(event, context):
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
             be = 'BassBoosted' if bass_level < 3 else 'Earrape'
-            data = {'chat_id': chat_id, 'title': f'{file_name} {be}', 'reply_markup': json.dumps(share_markup)}
+            data = {'chat_id': chat_id, 'title': f'{file_name} {be}'}
             data['performer'] = "@AudioBassBot"
             r = requests.post(url, files=files, data=data)
 
@@ -126,7 +126,7 @@ def main_audio(filename, chat_id, format_, params, duration):
     # обновляем баланс и сохрагяем текст в зависимости от роли
     table_dur = round(len(sample) / 1000)
 
-    text, share_markup = get_text(table_dur, chat_id)
+    text = get_text(table_dur, chat_id)
 
     attenuate_db = params[1]
     accentuate_db = params[2]
@@ -134,7 +134,7 @@ def main_audio(filename, chat_id, format_, params, duration):
     filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), params[3]))
     combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
 
-    return combined, text, share_markup
+    return combined, text
 
 
 def bass_line_freq(track, fact):
@@ -173,14 +173,11 @@ def get_text(table_dur, chat_id):
         mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
         max_sec_standard = mycursor.fetchone()[0]
         text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
-        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}]]}
 
     elif role == 'premium' or role == 'admin':
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
         text = get_text_from_db('after_req_standard')
-        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}],
-                                                   [{"text": "Поделиться треком, указывая ник", 'callback_data': 'name_share'}]]}
 
     # standard
     else:
@@ -189,7 +186,6 @@ def get_text(table_dur, chat_id):
         text = f[0][0]
         adv = f[1][0]
 
-        share_markup = {"inline_keyboard": [[{"text": "Поделиться треком анонимно", 'callback_data': 'anon_share'}]]}
         mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
         mydb.commit()
         if random.random() <= 0.15:
@@ -199,7 +195,7 @@ def get_text(table_dur, chat_id):
             text += get_text_from_db('referral', {'id': chat_id, 'ref_bonus': ref_bonus})
         elif adv.lower() != "null":
             text += f'\n\n{adv}'
-    return text, share_markup
+    return text
 
 
 # Telegram methods

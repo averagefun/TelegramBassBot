@@ -15,11 +15,6 @@ Resources:
     Properties:
       TopicName: "BassBoostTrigger"
 
-  SendToChannelTrigger:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: "SendToChannelTrigger"
-
   ## DynamoDB TABLE
   CredTableTBot:
     Type: 'AWS::DynamoDB::Table'
@@ -52,9 +47,6 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName:
               !GetAtt BassBoostTrigger.TopicName
-        - SNSPublishMessagePolicy:
-            TopicName:
-              !GetAtt SendToChannelTrigger.TopicName
         - DynamoDBCrudPolicy:
             TableName:
               Ref: CredTableTBot
@@ -116,36 +108,6 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: cron(0 * ? * * *)
-
-  LikeHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: LikeHandlerBassChannel
-      Description: "Handles likes/dislikes from @BassBoostCollection"
-      CodeUri: LikeHandler/
-      Handler: like.lambda_handler
-      Timeout: 7
-      MemorySize: 128
-      Runtime: python3.7
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName:
-              Ref: CredTableTBot
-      Layers:
-        - !Ref MySqlLayer
-      EventInvokeConfig:
-        MaximumRetryAttempts: 0
-      Events:
-        BotApi:
-          Type: Api
-          Properties:
-            Path: /like
-            Method: post
-        SendToChannel:
-          Type: SNS
-          Properties:
-            Topic:
-              Ref: SendToChannelTrigger
 
   ## LAYERS
   MySqlLayer:
