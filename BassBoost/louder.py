@@ -65,17 +65,34 @@ def lambda_handler(event, context):
     # получаем параметры для преобразования файла из таблицы
     mycursor.execute("SELECT * FROM bass_levels WHERE num = %s", (bass_level, ))
     params = mycursor.fetchone()[1:]     # name, att_db, acc_db, bass_factor
+    name = params[0]
 
     # преобразование файла >> сохрание в tmp под форматом mp3
     filename2 = f'{chat_id}_{time_}.mp3'
-    # успешность декодирования файла ffmpeg
     success = True
-    with open(f'/tmp/{filename2}', 'wb') as file:
-        try:
-            combined, text = main_audio(filename1, chat_id, format_, params, duration)
-            combined.export(file, format="mp3")
-        except Exception:
-            success = False
+    try:
+        sample = AudioSegment.from_file(f'/tmp/{filename1}', format=format_)
+
+        # обрезка
+        sample = sample[duration[0] * 1000: duration[1] * 1000]
+
+        # обновляем баланс и сохрагяем текст в зависимости от роли
+        table_dur = round(len(sample) / 1000)
+        text = get_text(table_dur, chat_id)
+
+        if 'bass' in name:
+            result = bass_boosted(sample, params)
+        elif '8D' in name:
+            result = audio_8d(sample, params[3])
+        else:
+            result = None
+
+        with open(f'/tmp/{filename2}', 'wb') as file:
+            result.export(file, format="mp3")
+
+    except Exception:
+        text = "Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>"
+        success = False
 
     # удаляем запрос и меняем статус
     mycursor.execute(f'DELETE FROM bass_requests WHERE id = %s', (chat_id, ))
@@ -94,13 +111,9 @@ def lambda_handler(event, context):
         url = 'https://api.telegram.org/bot{}/sendAudio'.format(Token)
         with open(f'/tmp/{filename2}', 'rb') as file:
             files = {'audio': file}
-            add = '' if file_name[-1] == '+' else "BassBoosted"
-            data = {'chat_id': chat_id, 'title': f'{file_name} {add}'}
-            data['performer'] = "@AudioBassBot"
+            add = 'Bass' if ('bass' in name) else "8D"
+            data = {'chat_id': chat_id, 'title': f'{file_name}{add}', 'performer': "@AudioBassBot"}
             r = requests.post(url, files=files, data=data)
-
-        # выводим сообщение смотря на роль
-        send_message(chat_id, text, file_markup)
 
         # удаляем BassBoost файл
         os.remove(f'/tmp/{filename2}')
@@ -110,72 +123,72 @@ def lambda_handler(event, context):
         username = mycursor.fetchone()[0]
 
         bass_file_id = json.loads(r.content)['result']['audio']['file_id']
-        send_to_channel(file_id, bass_file_id, username, params[0])
-    else:
-        send_message(chat_id, 'Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>',
-                     file_markup)
+        send_to_channel(file_id, bass_file_id, username, name)
+
+    # выводим сообщение смотря на роль и ошибку в преобразовании файла
+    send_message(chat_id, text, file_markup)
 
 
-def main_audio(filename, chat_id, format_, params, duration):
-    sample = AudioSegment.from_file(f'/tmp/{filename}', format=format_)
+def bass_boosted(sample, params):
 
-    # обрезка
-    sample = sample[duration[0] * 1000: duration[1] * 1000]
-
-    # обновляем баланс и сохрагяем текст в зависимости от роли
-    table_dur = round(len(sample) / 1000)
-
-    text = get_text(table_dur, chat_id)
+    def bass_line_freq(track, fact):
+        sample_track = list(track)
+        # c-value
+        est_mean = np.mean(sample_track)
+        # a-value
+        est_std = 3 * np.std(sample_track) / (math.sqrt(2))
+        bass_factor = int(round((est_std - est_mean) * fact))
+        return bass_factor
 
     attenuate_db = params[1]
     accentuate_db = params[2]
 
     filtered = sample.low_pass_filter(bass_line_freq(sample.get_array_of_samples(), params[3]))
-    combined = (sample - attenuate_db).overlay(filtered + accentuate_db)
-
-    return combined, text
+    return (sample - attenuate_db).overlay(filtered + accentuate_db)
 
 
-def bass_line_freq(track, fact):
-    sample_track = list(track)
-    # c-value
-    est_mean = np.mean(sample_track)
-    # a-value
-    est_std = 3 * np.std(sample_track) / (math.sqrt(2))
-    bass_factor = int(round((est_std - est_mean) * fact))
-    return bass_factor
+def audio_8d(sample, level):
+    pole = []
+    ranges = int(sample.duration_seconds)
+    pan = 0
+    down = True
+    bottom = False
+    for x in range(1, 10 * ranges):
+        y = x * 100
+        z = (x * 100) - 100
 
+        pole.append(sample[z: y].pan(pan))
 
-def get_text(table_dur, chat_id):
-    mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
-    role = mycursor.fetchone()[0]
-    if role == 'start':
-        # update status
-        mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
-                         (table_dur, chat_id))
-        mydb.commit()
+        timestamp = float(len(pole) / 10)
 
-        mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
-        max_sec_standard = mycursor.fetchone()[0]
-        text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
+        if timestamp >= 60:
+            minuta = int(timestamp / 60)
+            timestamp = "{:.2f}".format(timestamp - minuta * 60)
 
-    elif role == 'premium' or role == 'admin':
-        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
-        mydb.commit()
-        text = get_text_from_db('after_req_standard')
+        z += 1000
 
-    # standard
-    else:
-        mycursor.execute("SELECT text FROM msgs WHERE name IN ('after_req_standard', 'adv')")
-        f = mycursor.fetchall()
-        text = f[0][0]
-        adv = f[1][0]
+        if pan <= 0:
+            if down:
+                pan -= 0.05
+            else:
+                pan += 0.05
 
-        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
-        mydb.commit()
-        if adv.lower() != "null":
-            text += f'\n\n{adv}'
-    return text
+        if pan >= 0:
+            if down:
+                pan -= 0.05
+            else:
+                pan += 0.05
+
+        if pan <= -level:
+            down = False
+            if not bottom:
+                bottom = True
+        elif pan >= level:
+            down = True
+            if bottom:
+                bottom = False
+
+    return sum(pole)
 
 
 # Telegram methods
@@ -190,6 +203,10 @@ def send_message(chat_id, text, reply_markup=None):
         url += f"&reply_markup={json.dumps(reply_markup)}"
     r = requests.get(url).json()
     return r
+
+
+def alarm(text):
+    send_message(int(cred['creator_id']), text)
 
 
 def send_to_channel(file_id, bass_file_id, username, bass_level):
@@ -234,6 +251,38 @@ def get_cred():
     values = [item['cred_value'] for item in items]
     cred = dict(zip(keys, values))
     return cred
+
+
+def get_text(table_dur, chat_id):
+    mycursor.execute(f'SELECT role_ FROM users WHERE id = %s', (chat_id,))
+    role = mycursor.fetchone()[0]
+    if role == 'start':
+        # update status
+        mycursor.execute("UPDATE users SET total = total + %s, role_ = 'standard' WHERE id = %s",
+                         (table_dur, chat_id))
+        mydb.commit()
+
+        mycursor.execute("SELECT max_sec FROM roles WHERE name = 'standard'")
+        max_sec_standard = mycursor.fetchone()[0]
+        text = get_text_from_db('after_req_start', {'max_sec_standard': max_sec_standard})
+
+    elif role == 'premium' or role == 'admin':
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
+        text = get_text_from_db('after_req_standard')
+
+    # standard
+    else:
+        mycursor.execute("SELECT text FROM msgs WHERE name IN ('after_req_standard', 'adv')")
+        f = mycursor.fetchall()
+        text = f[0][0]
+        adv = f[1][0]
+
+        mycursor.execute("UPDATE users SET total = total + %s WHERE id = %s", (table_dur, chat_id))
+        mydb.commit()
+        if adv.lower() != "null":
+            text += f'\n\n{adv}'
+    return text
 
 
 cred = get_cred()

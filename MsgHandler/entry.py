@@ -340,7 +340,7 @@ class User:
                 # при отсутсвии аргумента выводим количество пользователей
                 mycursor.execute("SELECT count(*), sum(total), sum(balance) FROM users WHERE role_ != 'block_by_user'")
                 res = mycursor.fetchone()
-                send_message(self.id, f"Всего пользователей: <b>{res[0]}</b>\nВсего секунд: <b>{res[1]}</b>\nСумма балансов: <b>{res[2]}</b> руб.")
+                send_message(self.id, f"Всего пользователей: <b>{res[0]}</b>\nВсего секунд: <b>{res[1]}</b>")
 
         # произвольное сообщение некоторым пользователям
         elif command == '/message':
@@ -464,22 +464,6 @@ class User:
             else:
                 send_message(self.id, 'Доступны следующие теги: ' + ', '.join(texts))
 
-        elif command == '/price':
-            mycursor.execute("SELECT name_param FROM payment_param")
-            params = [param[0] for param in mycursor.fetchall()]
-            if arg and (arg in params):
-                if arg2:
-                    mycursor.execute("UPDATE payment_param SET value_param = %s WHERE name_param = %s",
-                                     (arg2, arg))
-                    mydb.commit()
-                    send_message(self.id, f'Теперь {arg} = {arg2} сек')
-                else:
-                    mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (arg,))
-                    value_param = mycursor.fetchone()[0]
-                    send_message(self.id, value_param)
-            else:
-                send_message(self.id, 'Доступны следующие товары: ' + ', '.join(params))
-
     def file(self, tag, message):
         # проверка на статус юзера
         if self.status != "wait_file":
@@ -546,7 +530,7 @@ class User:
         # автообрезание
         mycursor.execute('SELECT end_ - start_, start_ from bass_requests where id = %s', (self.id,))
         duration, start = mycursor.fetchone()
-        text = "<b>Запрос отправлен!</b> Ожидайте файл в течение 15-40 секунд."
+        text = f"<b>Запрос отправлен!</b> Ожидайте файл в течение {round(min(duration, self.max_sec)/3.5)} секунд."
         if self.max_sec < duration:
             text += f" <i>Учтите, что аудио будет обрезано до {self.max_sec} секунд в связи с ограничениями на размер аудио.</i>"
             mycursor.execute('UPDATE bass_requests SET end_ = %s where id = %s',
@@ -703,65 +687,7 @@ class InlineButton:
 
     def action(self):
         # выполняем различные действия в зависимости от нажатия кнопки
-        # генерируем оплату
-        if self.data == 'pay':
-            self.answer_query_no_text()
-            r = send_message(self.user_id, 'Создание оплаты...')
-            if not r['ok']:
-                send_message(self.user_id, 'Ошибка в создании оплаты, повторите попытку позже.')
-                return
-            pay_id = r['result']['message_id']
-            param = {'pay_id': pay_id, 'status': '❌ НЕ оплачено!'}
-            text = get_text_from_db('pay_rule', param)
-            edit_message(self.user_id, pay_id, text, pay_check_inline_markup)
-            mycursor.execute(
-                "INSERT INTO payment_query(pay_id, user_id, username, start_query, status_) VALUES (%s, %s, %s, NOW() + INTERVAL 3 HOUR, %s)",
-                (pay_id, self.user_id, self.msg['chat']['username'], "wait_for_payment"))
-            mydb.commit()
-        elif self.data == 'check_payment':
-            pay_check = pay.check_payment(self.msg_id, cred, mycursor, mydb)
-            if pay_check['success']:
-                self.answer_query_no_text()
-                param = {'pay_id': self.msg_id, 'status': '<b>✅ Оплачено!</b>'}
-                text = get_text_from_db('pay_rule', param)
-                edit_message(self.user_id, self.msg_id, text)
-                # получаем сумму в рублях
-                sum_rub = pay_check['sum']
-                # обновляем баланс
-                mycursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s",
-                                 (sum_rub, self.user_id))
-                mydb.commit()
-                send_sticker(self.user_id, 'money')
-                send_message(self.user_id,
-                             f"Оплата успешно завершена!\nВам начислено <b>{sum_rub}</b> руб!")
-            else:
-                if pay_check['error'] == 'Payment_not_found':
-                    self.answer_query(
-                        'Повторите попытку проверки через несколько секунд. Мы ещё не получили платёж от Qiwi!',
-                        show_alert=True)
-                elif pay_check['error'] == 'already_complete':
-                    self.answer_query('Вы уже успешно оплатили этот заказ!', show_alert=True)
-                else:
-                    self.answer_query_no_text()
-                    send_message(self.id,
-                                 f"""Произошла ошибка на стороне Qiwi ({pay_check['error']}).
-                                    <i>Убедитесь, что все введённые при оплате данные верны и
-                                    повторите оплату снова.</i>""")
-                    mycursor.execute("UPDATE payment_query SET status_ = %s WHERE pay_id = %s",
-                                     (pay_check['error'], self.msg_id))
-                    mydb.commit()
-        elif self.data == 'error_payment':
-            self.answer_query_no_text()
-            send_message(self.user_id,
-                         f"Сожалеем, что у вас возникли проблемы, опишите свою проблему в сообщении @{cred['creator_username']}, прикрепите скриншот квитанции об оплате!")
-
-        elif self.data == 'delete_payment':
-            mycursor.execute("DELETE FROM payment_query WHERE pay_id = %s", (self.msg_id,))
-            mydb.commit()
-            self.answer_query('Успешно удалено')
-            delete_message(self.user_id, self.msg_id)
-
-        elif 'mailing' in self.data:
+        if 'mailing' in self.data:
             if self.data == 'finished_mailing':
                 self.answer_query("Эта рассылка уже завершена!", show_alert=True)
                 return
@@ -789,6 +715,7 @@ class InlineButton:
 
             mycursor.execute("SELECT count FROM mail_requests WHERE msg_id = %s", (self.msg_id, ))
             count = mycursor.fetchone()[0]
+            q = ""
             if self.data == 'start_mailing':
                 q = "UPDATE mail_requests SET active = 1 WHERE msg_id = %s"
                 self.answer_query("Рассылка включена!")
@@ -799,28 +726,6 @@ class InlineButton:
                 self.edit_buttons("Stopped", count)
             mycursor.execute(q, (self.msg_id, ))
             mydb.commit()
-
-        # premium товары
-        elif 'premium' in self.data:
-            mycursor.execute("SELECT balance FROM users WHERE id = %s", (self.user_id,))
-            balance = mycursor.fetchone()[0]
-            premium_prod = {'premium_day': 1, 'premium_week': 7, 'premium_month': 30}
-            mycursor.execute("SELECT value_param FROM payment_param WHERE name_param = %s", (self.data, ))
-            price = mycursor.fetchone()[0]
-            if balance >= price:
-                mycursor.execute(
-                    """UPDATE users SET balance = balance - %s, role_ = 'premium',
-                    role_end = IF (role_end IS NULL, NOW() + INTERVAL 3 HOUR + INTERVAL %s DAY, role_end + INTERVAL %s DAY)
-                    WHERE id = %s""",
-                    (price, premium_prod[self.data], premium_prod[self.data], self.user_id))
-                mydb.commit()
-                self.answer_query("Успешно!")
-                mycursor.execute("SELECT role_end FROM users WHERE id = %s", (self.user_id, ))
-                send_message(self.user_id,
-                             f"Вы успешно приобрели подписку premium до {mycursor.fetchone()[0]} по МСК.")
-
-            else:
-                self.answer_query("Недостаточно средств на балансе!", show_alert=True)
 
         else:
             # ошибочная кнопка
@@ -988,24 +893,16 @@ tags = {'audio', 'voice', 'video_note', 'video'}
 formats = ('mpeg', 'mpeg3', 'mp3', 'mp4', 'ogg')
 
 # все используемые клавиатуры
-products = {"inline_keyboard": [[{"text": "Купить premium (24 часа)", 'callback_data': 'premium_day'}],
-                                [{"text": "Купить premium (7 дней)", 'callback_data': 'premium_week'}],
-                                [{"text": "Купить premium (30 дней)", 'callback_data': 'premium_month'}]]}
-pay_inline_markup = {"inline_keyboard": [[{"text": "Перейти к оплате", 'callback_data': 'pay'}]]}
-pay_check_inline_markup = {"inline_keyboard": [[{"text": "Проверить оплату", 'callback_data': 'check_payment'}],
-                                               [{"text": "Проблемы с оплатой!", 'callback_data': 'error_payment'}],
-                                               [{"text": "Удалить платёжную сессию!",
-                                                 'callback_data': 'delete_payment'}]]}
 cut_markup = {'keyboard': [['Обрезать не нужно']], 'resize_keyboard': True}
 file_markup = {'keyboard': [['Отправьте файл боту!🎧']], 'resize_keyboard': True}
 start_mail_markup = {"inline_keyboard": [[{"text": f"Stopped 0 🟠", 'callback_data': 'start_mailing'}],
                                          [{"text": f"Test messageℹ️", 'callback_data': 'test_mailing'}],
                                          [{"text": f"Delete❌", 'callback_data': 'delete_mailing'}]]}
 
-level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA"]
+level = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D 🆕"]
 
 def bass_markup(cut=True):
-    markup = {'keyboard': [[level[0]], [level[1]], [level[2]], ["❌Отменить"]],
+    markup = {'keyboard': [[level[0], level[1]], [level[2], level[3]], ["❌Отменить"]],
               'one_time_keyboard': True,
               'resize_keyboard': True}
     if cut:
