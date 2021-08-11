@@ -1,6 +1,9 @@
 # hidden folder
 hidden/
 
+# cred file
+cred.py
+
 ### Linux ###
 *~
 
