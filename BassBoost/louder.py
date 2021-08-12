@@ -140,6 +140,8 @@ def lambda_handler(event, context=None):
     # выводим сообщение смотря на роль и ошибку в преобразовании файла
     bot.send_message(text, 'file_markup')
 
+    bot.db_close()
+
 
 def bass_boosted(sample, params):
 
@@ -206,6 +208,10 @@ class DataBase:
             database=cred['db_name']
         )
         self.mycursor = self.mydb.cursor(buffered=True)
+
+    def db_close(self):
+        self.mycursor.close()
+        self.mydb.close()
 
     def db_commit(self, query, params=None, many=False):
         if many:

@@ -1,5 +1,6 @@
 import json
 import time
+from math import ceil
 
 import requests
 import boto3
@@ -451,7 +452,8 @@ class User(TelegramBot):
         # автообрезание
         duration, start = self.fetchone("SELECT end_ - start_, start_ from bass_requests where user_id = %s",
                                         self.chat_id)
-        text = f"<b>Запрос отправлен!</b> Ожидайте файл в течение {round(min(duration, cred['max_sec']) / 3.5)} секунд."
+        process_time = ceil(min(duration, cred['max_sec']) / 35) * 10
+        text = f"<b>Запрос отправлен!</b> Ожидайте файл в течение {process_time} секунд."
         if cred['max_sec'] < duration:
             text += f" <i>Учтите, что аудио будет обрезано до {cred['max_sec']} секунд в связи с ограничениями на " \
                     f"размер аудио.</i> "
