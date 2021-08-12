@@ -20,7 +20,11 @@ def lambda_handler(event, context=None):
     try:
         event = json.loads(event['body'])
         print(event)
-        msg_handler(event)
+
+        if BOT_ACTIVE:
+            msg_handler(event)
+        else:
+            debug_handler(event)
     except Exception as e:
         print(f'ERROR:{e} || EVENT:{event}')
         log = context.log_stream_name[-6:] if context else ""
@@ -31,17 +35,28 @@ def lambda_handler(event, context=None):
 
 
 def msg_handler(event):
+    if 'my_chat_member' in event:
+        my_member = event['my_chat_member']
+        chat_id = my_member['chat']['id']
+        new_status = my_member['new_chat_member']['status']
+
+        if new_status == 'kicked':
+            bot = TelegramBot(chat_id)
+            bot.db_commit("DELETE FROM users WHERE id = %s", chat_id)
+            bot.db_close()
+        return
+
     # проверка на нажатие инлайн кнопки
-    if 'callback_query' in event.keys():
+    elif 'callback_query' in event.keys():
         button = InlineButton(event)
         button.action()
-        return
+        return button.db_close()
 
     # инициализация юзера
     user = User(event)
     # проверка на успешную инициализацию
     if not user.init_success:
-        return
+        return user.db_close()
 
     # проверяем: это сообщение или файл - находим общие ключи
     c = list(set(user.msg.keys()) & tags)
@@ -49,6 +64,20 @@ def msg_handler(event):
         user.file(c[0])
     else:  # Юзер написал текст
         user.message()
+    user.db_close()
+
+
+def debug_handler(event):
+    if 'callback_query' in event.keys():
+        chat_id = event['callback_query']['message']['chat']['id']
+    elif 'message' in event.keys():
+        chat_id = event['message']['chat']['id']
+    else: return
+
+    if chat_id == cred['creator_id']:
+        msg_handler(event)
+    else:
+        TelegramBot.send_alert("Извините, бот временно отдыхает. Идёт обновление кода.", chat_id)
 
 
 class DataBase:
@@ -60,6 +89,10 @@ class DataBase:
             database=cred['db_name']
         )
         self.mycursor = self.mydb.cursor(buffered=True)
+
+    def db_close(self):
+        self.mycursor.close()
+        self.mydb.close()
 
     def db_commit(self, query, params=None, many=False):
         if many:
@@ -129,12 +162,12 @@ class TelegramBot(DataBase):
     token = cred['bot_token']
     URL = "https://api.telegram.org/bot{}/".format(token)
 
-    if BOT_ACTIVE:
-        lazy_db = DataBase()
+    if BOT_ACTIVE: lazy_db = DataBase()
 
     tag_reply_markups = {
         'cut_markup': [['Обрезать не нужно']],
-        'file_markup': [['Отправьте файл боту!🎧']]}
+        'file_markup': [['Отправьте файл боту!🎧']],
+        'cancel_markup': [['Вернуться в меню']]}
     levels = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D"]
     tag_inline_markups = {}
     stickers = {'hello': 'CAACAgIAAxkBAALD_2D9ElJ2HbPzDUTRkNlZWbWMOwg_AAIBAQACVp29CiK-nw64wuY0IAQ',
@@ -177,9 +210,10 @@ class TelegramBot(DataBase):
         return markup
 
     @classmethod
-    def send_alert(cls, text):
+    def send_alert(cls, text, chat_id=None):
+        if not chat_id: chat_id = cred['creator_id']
         url = cls.URL + "sendMessage?chat_id={}&text={}&parse_mode=HTML&disable_web_page_preview=True".format(
-            cred['creator_id'], text)
+            chat_id, text)
         requests.get(url)
 
     def send_message(self, text, reply_markup=None):
@@ -295,7 +329,7 @@ class User(TelegramBot):
         if not user_info:
             self.db_commit("INSERT INTO users (id, username, reg_date) VALUES (%s, %s, NOW() + INTERVAL 3 HOUR)",
                            (self.chat_id, self.username))
-            self.update_status('wait_file')
+            self.status = 'start'
         else:
             db_username, self.status = user_info
 
@@ -320,6 +354,7 @@ class User(TelegramBot):
             if self.status == 'start':
                 self.send_sticker('hello')
                 self.send_message(self.get_db_text('start'))
+                self.update_status('wait_file')
             else:
                 self.send_message("Бот уже <b>запущен</b> и ожидает\nфайл/сообщение!\n<i>/help - помощь по боту</i>")
 
@@ -407,6 +442,9 @@ class User(TelegramBot):
 
         # обновляем статус
         self.update_status('wait_bass_level')
+
+        # посылаем запрос к BassBoostFunction, чтобы разбудить её в случае сна
+        put_sns('BassBoostTrigger', 'wakey')
 
     def send_req_to_bass(self):
 
@@ -516,6 +554,17 @@ class User(TelegramBot):
             # обновляем статус на басс
             self.update_status('wait_bass_level')
 
+        elif self.status.split('__')[0] == 'text-edit':
+            if self.text == self.tag_reply_markups['cancel_markup'][0][0]:
+                self.send_message('<i>Вы вернулись в главное меню.</i>', 'file_markup')
+                self.update_status('wait_file')
+                return
+            tag = self.status.split('__')[1]
+            entities = self.msg['entities'] if 'entities' in self.msg else None
+            self.set_db_text(tag, (self.text, entities))
+            self.send_message(self.get_db_text(tag), 'file_markup')
+            self.update_status('wait_file')
+
 
 class InlineButton(TelegramBot):
     def __init__(self, event):
@@ -535,10 +584,13 @@ class InlineButton(TelegramBot):
 
         if title == 'text':
             self.text(content)
+        elif title == 'help':
+            text = content[0]
+            self.answer_query(text)
         else:
             # ошибочная кнопка
             self.answer_query_no_text()
-            self.send_alert(f'ERROR with inline button:\nMESSAGE:\n{self.msg}')
+            self.send_alert(f'Warning:\nInline btn with no action\nMESSAGE:\n{self.msg}')
 
     def text(self, content):
         option, tag = content[:2]
@@ -551,7 +603,7 @@ class InlineButton(TelegramBot):
             self.answer_query_no_text()
         elif option == 'edit':
             self.delete_message(self.msg_id)
-            self.send_message(f"<b>Введите новый текст «‎{tag}»:</b>", 'cancel')
+            self.send_message(f"<b>Введите новый текст «‎{tag}»:</b>", 'cancel_markup')
             self.update_status(f'text-edit__{tag}')
             self.answer_query_no_text()
         elif option == 'del':

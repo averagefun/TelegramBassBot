@@ -28,6 +28,8 @@ def lambda_handler(event, context=None):
 
     message = event['Records'][0]['Sns']['Message']
 
+    if message == 'wakey': return
+
     # получаем req_id
     req_id = int(message)
 
