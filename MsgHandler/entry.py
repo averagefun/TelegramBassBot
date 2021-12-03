@@ -1,7 +1,10 @@
+import traceback
 import json
 import time
 from math import ceil
+from multiprocessing import Process
 
+from pytube import YouTube
 import requests
 import boto3
 import mysql.connector
@@ -16,7 +19,22 @@ not_active_msg = 'Извините, бот временно отдыхает. И
 ####################
 #  lambda_handler  #
 ####################
-def lambda_handler(event, context=None):
+def lambda_handler(event, context):
+    p = Process(target=handler, args=(event, ))
+    p.start()
+    left = context.get_remaining_time_in_millis()//1000 - 1
+    p.join(timeout=left)
+    p.terminate()
+
+    if p.exitcode is None:
+        print("TIMEOUT!")
+        TelegramBot.send_alert("TIMEOUT")
+
+    # в любом случае возвращаем телеграму код 200
+    return {'statusCode': 200}
+
+
+def handler(event):
     # обрабатываем любые исключения
     try:
         event = json.loads(event['body'])
@@ -26,13 +44,11 @@ def lambda_handler(event, context=None):
             msg_handler(event)
         else:
             debug_handler(event)
-    except Exception as e:
-        print(f'ERROR:{e} || EVENT:{event}')
-        log = context.log_stream_name[-6:] if context else ""
-        TelegramBot.send_alert(f'ERROR:\n{e}\nLOG: {log}\nEVENT:\n{event}')
 
-    # в любом случае возвращаем телеграму код 200
-    return {'statusCode': 200}
+    except Exception:
+        out = str(traceback.format_exc()) + '\nEVENT:\n' + str(event)
+        print(out)
+        TelegramBot.send_alert(out)
 
 
 def msg_handler(event):
@@ -167,9 +183,9 @@ class TelegramBot(DataBase):
 
     tag_reply_markups = {
         'cut_markup': [['Обрезать не нужно']],
-        'file_markup': [['Отправьте файл боту!🎧']],
+        'file_markup': [['👉Отправьте файл🎧|YouTube-ссылку🔗']],
         'cancel_markup': [['Вернуться в меню']]}
-    levels = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D"]
+    levels = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D+Reverb"]
     tag_inline_markups = {}
     stickers = {'hello': 'CAACAgIAAxkBAALD_2D9ElJ2HbPzDUTRkNlZWbWMOwg_AAIBAQACVp29CiK-nw64wuY0IAQ',
                 'loading': 'CAACAgIAAxkBAAN_Xre2LtYeBDA-3_ewh5kMueCsRWsAAgIBAAJWnb0KTuJsgctA5P8ZBA'}
@@ -293,9 +309,7 @@ class TelegramBot(DataBase):
         r = requests.get(url).json()
         return r['result']['status']
 
-    def get_file(self):
-        # get file_id from db
-        file_id = self.fetchone('SELECT file_id FROM bass_requests WHERE user_id = %s', self.chat_id)
+    def get_file(self, file_id):
         # make request
         url = self.URL + "getFile?file_id={}".format(file_id)
         r = requests.get(url)
@@ -352,12 +366,7 @@ class User(TelegramBot):
 
         # начальное сообщение-приветствие
         if command == '/start':
-            if self.status == 'start':
-                self.send_sticker('hello')
-                self.send_message(self.get_db_text('start'))
-                self.update_status('wait_file')
-            else:
-                self.send_message("Бот уже <b>запущен</b> и ожидает\nфайл/сообщение!\n<i>/help - помощь по боту</i>")
+            self.send_message("Бот уже <b>запущен</b> и ожидает\nфайл/сообщение!\n<i>/help - помощь по боту</i>")
 
         # удаление запроса
         elif command == '/cancel':
@@ -372,7 +381,7 @@ class User(TelegramBot):
 
         # статистика по пользователям
         elif command == '/users' and self.chat_id == cred['creator_id']:
-            self.send_message(self.fetchone("SELECT count(*) FROM users"))
+            self.send_message(self.fetchone("SELECT count(*) FROM users WHERE total > 0"))
 
         # изменение текстов
         elif command == '/texts' and self.chat_id == cred['creator_id']:
@@ -450,8 +459,9 @@ class User(TelegramBot):
     def send_req_to_bass(self):
 
         # автообрезание
-        duration, start = self.fetchone("SELECT end_ - start_, start_ from bass_requests where user_id = %s",
-                                        self.chat_id)
+        file_id, duration, start = self.fetchone(
+            "SELECT file_id, end_ - start_, start_ from bass_requests where user_id = %s",
+            self.chat_id)
         process_time = ceil(min(duration, cred['max_sec']) / 35) * 10
         text = f"<b>Запрос отправлен!</b> Ожидайте файл в течение {process_time} секунд."
         if cred['max_sec'] < duration:
@@ -464,10 +474,15 @@ class User(TelegramBot):
         self.send_message(text)
         # получаем id сообщения (стикер с думающим утёнком)
         req_id = self.send_sticker('loading')
-        file = self.get_file()
-        # аварийная проверка на размер
-        assert file['result']['file_size'] <= cred['maxsize']
-        file_path = file['result']['file_path']
+
+        if file_id[:7] != 'youtube':
+            file = self.get_file(file_id)
+            # аварийная проверка на размер
+            assert file['result']['file_size'] <= cred['maxsize']
+            file_path = file['result']['file_path']
+        else:
+            file_path = file_id[8:]
+
         self.db_commit(f"UPDATE bass_requests SET req_id = %s, file_path = %s WHERE user_id = %s",
                        (req_id, file_path, self.chat_id))
         self.db_commit("UPDATE users SET user_status = 'req_sent', last_query = NOW() + INTERVAL 3 HOUR WHERE id = %s",
@@ -488,12 +503,54 @@ class User(TelegramBot):
                 self.send_message('Ошибка! Введите ваш ответ более корректно!')
             return
 
+        # start
+        if self.status == "start":
+            self.send_sticker('hello')
+            self.send_message(self.get_db_text('start'))
+            self.update_status('wait_file')
+
         # command
-        if self.text[0] == '/':
+        elif self.text[0] == '/':
             self.commands()
 
         elif self.status == "wait_file":
-            self.send_message('Пожалуйста, отправьте <b>файл</b>, а не сообщение!', 'file_markup')
+            # если это не ссылка
+            if self.text[:5] != 'https':
+                return self.send_message('Пожалуйста, отправьте <b>файл🎧 или YouTube-ссылку🔗</b>!', 'file_markup')
+
+            # вроде как ссылка
+            try:
+                yt = YouTube(self.text)
+                if yt.length > 420:
+                    return self.send_message("Это видео слишком длинное (более 7 минут).\n"
+                                             "<b>Выберите видео поменьше или загрузите файл!</b>")
+            except Exception:
+                return self.send_message(
+                    "Видео не найдено.\n<b>Отправьте другую ссылку или файл.</b>",
+                    'file_markup')
+
+            # if audio.filesize > cred['maxsize']: return self.send_message( f"Это видео слишком длинное,
+            # аудиодорожка занимает больше {round(cred['maxsize'] / 10 ** 6, 1)} Мб." "\n<b>Выберите видео поменьше
+            # или загрузите файл!</b>")
+
+            # удаляем все предыдущие запросы во избежании багов
+            self.db_commit('DELETE FROM bass_requests WHERE user_id = %s', self.chat_id)
+
+            title = ' '.join(f'{yt.title} F'[:60].split()[:-1]).replace('|', ' ')
+            # начинаем формировать запрос
+            self.db_commit(
+                "INSERT INTO bass_requests (user_id, file_id, format_, end_, file_name) VALUES (%s, %s, %s, %s, %s)",
+                (self.chat_id, 'youtube:' + self.text, 'mp4', yt.length, title))
+
+            self.send_message(
+                '<b>Все ок! Теперь можно выбрать уровень усиления трека или сначала обрезать его:</b>',
+                self.bass_markup())
+
+            # обновляем статус
+            self.update_status('wait_bass_level')
+
+            # посылаем запрос к BassBoostFunction, чтобы разбудить её в случае сна
+            put_sns('BassBoostTrigger', 'wakey')
 
         # выбор уровня баса
         elif self.status == "wait_bass_level":
@@ -550,7 +607,7 @@ class User(TelegramBot):
                         'Границы обрезки выходят за длительность песни.\n<b>Напишите границы обрезки '
                         'корректно!</b>', 'cut_markup')
 
-            self.send_message("<b>Теперь выбери уровень усиления трека</b>",
+            self.send_message("<b>Теперь выбери уровень усиления трека:</b>",
                               self.bass_markup(cut=False))
 
             # обновляем статус на басс

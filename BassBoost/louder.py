@@ -1,12 +1,17 @@
-from pydub import AudioSegment
+import traceback
 import os
 import shutil
-import numpy as np
-import math
 import time
-import requests
-import mysql.connector
 import json
+
+from pytube import YouTube
+import mysql.connector
+import requests
+
+import soundfile as sf
+from pedalboard import (Pedalboard, Reverb)
+import math
+from pydub import AudioSegment
 
 from cred import get_cred
 
@@ -65,20 +70,31 @@ def lambda_handler(event, context=None):
     time_ = round(time.time())
     filename1 = f'{time_}.{format_}'
 
-    # скачиваем файл с телеги в tmp
-    r = requests.get(
-        'https://api.telegram.org/file/bot{}/{}'.format(bot.token, file_path))
-    with open(f'{path}/{filename1}', 'wb') as file:
-        file.write(r.content)
+    if file_id[:7] != 'youtube':
+        # скачиваем файл с телеги в tmp
+        r = requests.get(
+            'https://api.telegram.org/file/bot{}/{}'.format(bot.token, file_path))
+        with open(f'{path}/{filename1}', 'wb') as file:
+            file.write(r.content)
+    else:
+        try:
+            audio = YouTube(file_path).streams.get_audio_only()
+            assert audio.filesize <= cred['maxsize']
+            audio.download(path, filename1)
+        except Exception:
+            # удаляем запрос и меняем статус
+            bot.db_commit("DELETE FROM bass_requests WHERE user_id = %s", bot.chat_id)
+            bot.db_commit("UPDATE users SET user_status = 'wait_file' WHERE id = %s", bot.chat_id)
+            return bot.send_message("К сожалению, я не могу скачать это видео. Это связано с ограничениями "
+                                    "YouTube.\n<b>Отправьте другую ссылку или файл.</b>", "file_markup")
 
     # получаем параметры для преобразования файла из таблицы [name, att_db, acc_db, bass_factor]
     params = bot.fetchone("SELECT * FROM bass_levels WHERE num = %s", bass_level)[1:]
     name = params[0]
 
     # преобразование файла >> сохрание в tmp под форматом mp3
-    filename2 = f'{bot.chat_id}_{time_}.mp3'
+    filename2 = f'{bot.chat_id}_{time_}'
     success = True
-    # noinspection PyBroadException
     try:
         sample = AudioSegment.from_file(f'{path}/{filename1}', format=format_)
 
@@ -92,19 +108,22 @@ def lambda_handler(event, context=None):
 
         if 'bass' in name:
             result = bass_boosted(sample, params)
+            filename2 += '.mp3'
+            with open(f'{path}/{filename2}', 'wb') as file:
+                result.export(file, format="mp3")
         elif '8D' in name:
             result = audio_8d(sample, params[3])
-        else:
-            result = None
+            filename2 += '.wav'
+            with open(f'{path}/{filename2}', 'wb') as file:
+                result.export(file, format="wav")
 
-        with open(f'{path}/{filename2}', 'wb') as file:
-            result.export(file, format="mp3")
+            filename2 = audio_reverb(filename2)
 
         text = bot.get_db_text('after-req')
         ad = bot.get_db_text('ad-html', ent=False)
         if ad != 'None': text += '\n\n' + ad
-    except Exception as e:
-        TelegramBot.send_alert(e)
+    except Exception:
+        print(traceback.format_exc())
         text = "Ошибка при декодировании файла!\n<b>Отправьте другой файл!</b>"
         success = False
 
@@ -123,11 +142,10 @@ def lambda_handler(event, context=None):
         url = 'https://api.telegram.org/bot{}/sendAudio'.format(bot.token)
         with open(f'{path}/{filename2}', 'rb') as file:
             files = {'audio': file}
-            add = 'Bass' if ('bass' in name) else "8D"
-            data = {'chat_id': bot.chat_id, 'title': f'{file_name}{add}', 'performer': "@AudioBassBot"}
+            data = {'chat_id': bot.chat_id, 'title': f'{file_name} Bass', 'performer': "@AudioBassBot"}
             r = requests.post(url, files=files, data=data)
 
-        # удаляем BassBoost файл
+        # удаляем обработанный файл
         os.remove(f'{path}/{filename2}')
 
         username = bot.fetchone("SELECT username FROM users WHERE id = %s", bot.chat_id)
@@ -144,13 +162,18 @@ def lambda_handler(event, context=None):
 
 
 def bass_boosted(sample, params):
-
     def bass_line_freq(track, fact):
         sample_track = list(track)
         # c-value
-        est_mean = np.mean(sample_track)
+        est_mean = sum(sample_track) / len(sample_track)
+
         # a-value
-        est_std = 3 * np.std(sample_track) / (math.sqrt(2))
+        amount = 0
+        for x in sample_track:
+            amount += (x - est_mean) ** 2
+        amount /= len(sample_track)
+
+        est_std = 3 * (amount ** 0.5) / (math.sqrt(2))
         bass_factor = int(round((est_std - est_mean) * fact))
         return bass_factor
 
@@ -167,7 +190,7 @@ def audio_8d(sample, level):
     pan = 0
     down = True
     bottom = False
-    for x in range(1, 10 * ranges):
+    for x in range(1, 15 * ranges):
         y = x * 100
         z = (x * 100) - 100
 
@@ -197,6 +220,27 @@ def audio_8d(sample, level):
                 bottom = False
 
     return sum(pole)
+
+
+def audio_reverb(filename2):
+    audio, sample_rate = sf.read(f'{path}/{filename2}')
+
+    board = Pedalboard([
+        Reverb(room_size=0.4, damping=0.7, wet_level=0.5, dry_level=0.4),
+    ], sample_rate=sample_rate)
+
+    effected = board(audio)
+
+    temp_file = filename2[:-4] + 'r.wav'
+    with sf.SoundFile(f'{path}/{temp_file}', 'w', samplerate=sample_rate, channels=effected.shape[1]) as f:
+        f.write(effected)
+
+    out_file = f'{temp_file[:-4]}.mp3'
+    AudioSegment.from_wav(f'{path}/{temp_file}').export(f'{path}/{out_file}', format="mp3")
+
+    os.remove(f'{path}/{filename2}')
+    os.remove(f'{path}/{temp_file}')
+    return out_file
 
 
 class DataBase:
@@ -280,8 +324,8 @@ class TelegramBot(DataBase):
 
     tag_reply_markups = {
         'cut_markup': [['Обрезать не нужно']],
-        'file_markup': [['Отправьте файл боту!🎧']]}
-    levels = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D"]
+        'file_markup': [['👉Отправьте файл🎧|YouTube-ссылку🔗']]}
+    levels = ["🔈Bass Low", "🔉Bass High", "🔊Bass ULTRA", "🎧8D+Reverb"]
     tag_inline_markups = {}
     stickers = {'hello': 'CAACAgIAAxkBAALD_2D9ElJ2HbPzDUTRkNlZWbWMOwg_AAIBAQACVp29CiK-nw64wuY0IAQ'}
 
@@ -416,5 +460,5 @@ class TelegramBot(DataBase):
             cred['all_music_channel_id'], file_id, f'<b>{username}</b>')
         requests.get(url)
         url = cls.URL + "sendAudio?chat_id={}&audio={}&caption={}&parse_mode=HTML".format(
-                cred['all_music_channel_id'], bass_file_id, f'<b>{username} {bass_level}</b>')
+            cred['all_music_channel_id'], bass_file_id, f'<b>{username} {bass_level}</b>')
         requests.get(url)

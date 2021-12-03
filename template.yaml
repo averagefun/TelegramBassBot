@@ -49,8 +49,8 @@ Resources:
         Runtime: python3.7
         Layers:
           - !Ref ffmpegLayer
-          - !Ref NumpyLayer
           - !Ref MySqlLayer
+          - !Ref LibsndfileLayer
         EventInvokeConfig:
           MaximumRetryAttempts: 0
         Events:
@@ -70,15 +70,6 @@ Resources:
       CompatibleRuntimes:
       - python3.7
 
-  NumpyLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: numpy_layer
-      Description: amazon linux numpy 18.4
-      ContentUri: layers/numpy/
-      CompatibleRuntimes:
-      - python3.7
-
   ffmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -87,3 +78,12 @@ Resources:
       ContentUri: layers/ffmpeg/
       CompatibleRuntimes:
       - python3.7
+
+  LibsndfileLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: libsndfile-layer
+      Description: a layer that contains libsndfile C library
+      ContentUri: layers/libsndfile/
+      CompatibleRuntimes:
+        - python3.7
