@@ -33,7 +33,7 @@ def lambda_handler(event, context=None):
 
     message = event['Records'][0]['Sns']['Message']
 
-    if message == 'wakey': return
+    if not message.isdigit(): return
 
     # получаем req_id
     req_id = int(message)
